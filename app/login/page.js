@@ -3,6 +3,28 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
+// Las constantes estáticas van afuera para optimizar el rendimiento
+const ROLES = [
+  {
+    id: "administrador",
+    nombre: "Administrador",
+    descripcion: "Gestiona todo el sistema",
+    icono: "👨‍💼",
+  },
+  {
+    id: "bibliotecario",
+    nombre: "Bibliotecario",
+    descripcion: "Gestiona préstamos y multas",
+    icono: "📚",
+  },
+  {
+    id: "alumno",
+    nombre: "Alumno",
+    descripcion: "Consulta préstamos y reservas",
+    icono: "🎓",
+  },
+];
+
 export default function Login() {
   const router = useRouter();
 
@@ -13,13 +35,10 @@ export default function Login() {
   const handleSubmit = (e) => {
     e.preventDefault();
 
-    // Simulación de login
     const usuario = {
       email,
       rol,
     };
-
-    console.log(usuario);
 
     // Guardar usuario temporalmente
     localStorage.setItem("usuario", JSON.stringify(usuario));
@@ -29,54 +48,26 @@ export default function Login() {
       case "administrador":
         router.push("/admin");
         break;
-
       case "bibliotecario":
         router.push("/bibliotecario");
         break;
-
       case "alumno":
         router.push("/alumno");
         break;
-
       default:
         router.push("/");
     }
   };
 
-  const roles = [
-    {
-      id: "administrador",
-      nombre: "Administrador",
-      descripcion: "Gestiona todo el sistema",
-      icono: "👨‍💼",
-    },
-    {
-      id: "bibliotecario",
-      nombre: "Bibliotecario",
-      descripcion: "Gestiona préstamos y multas",
-      icono: "📚",
-    },
-    {
-      id: "alumno",
-      nombre: "Alumno",
-      descripcion: "Consulta préstamos y reservas",
-      icono: "🎓",
-    },
-  ];
-
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-gray-900 to-slate-800 p-5">
-      
       <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl p-8">
         
         {/* HEADER */}
         <div className="text-center">
-        
-
           <h1 className="text-3xl font-bold text-gray-800">
             Biblioteca Digital
           </h1>
-
           <p className="text-gray-500 mt-2">
             Sistema de gestión bibliotecaria
           </p>
@@ -89,7 +80,7 @@ export default function Login() {
           </label>
 
           <div className="grid gap-3">
-            {roles.map((item) => (
+            {ROLES.map((item) => (
               <button
                 key={item.id}
                 type="button"
@@ -102,12 +93,10 @@ export default function Login() {
                 }`}
               >
                 <span className="text-2xl">{item.icono}</span>
-
                 <div className="text-left">
                   <h3 className="font-semibold text-gray-800">
                     {item.nombre}
                   </h3>
-
                   <p className="text-sm text-gray-500">
                     {item.descripcion}
                   </p>
@@ -119,13 +108,11 @@ export default function Login() {
 
         {/* FORM */}
         <form onSubmit={handleSubmit} className="space-y-5 mt-8">
-          
           {/* EMAIL */}
           <div>
             <label className="block text-sm font-semibold text-gray-700">
               Correo electrónico
             </label>
-
             <input
               type="email"
               placeholder="correo@ejemplo.com"
@@ -141,7 +128,6 @@ export default function Login() {
             <label className="block text-sm font-semibold text-gray-700">
               Contraseña
             </label>
-
             <input
               type="password"
               placeholder="••••••••"
@@ -159,20 +145,20 @@ export default function Login() {
           >
             Iniciar sesión
           </button>
-          {/* CREAR CUENTA */}
-<div className="text-center">
-  <p className="text-sm text-gray-500">
-    ¿No tienes cuenta?
-  </p>
 
-  <button
-    type="button"
-    onClick={() => router.push("/registro")}
-    className="mt-2 text-blue-600 hover:text-blue-800 font-semibold transition-all"
-  >
-    Crear cuenta
-  </button>
-</div>
+          {/* CREAR CUENTA */}
+          <div className="text-center">
+            <p className="text-sm text-gray-500">
+              ¿No tienes cuenta?
+            </p>
+            <button
+              type="button"
+              onClick={() => router.push("/registro")}
+              className="mt-2 text-blue-600 hover:text-blue-800 font-semibold transition-all"
+            >
+              Crear cuenta
+            </button>
+          </div>
         </form>
       </div>
     </div>
