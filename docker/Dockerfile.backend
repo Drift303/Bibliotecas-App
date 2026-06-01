@@ -1,0 +1,32 @@
+# backend/Dockerfile - Desarrollo con hot-reload
+FROM node:18-alpine
+
+WORKDIR /app
+
+# Instalar dependencias del sistema (build-base para compilar módulos nativos)
+RUN apk add --no-cache git build-base python3
+
+# Copiar package.json y package-lock.json
+COPY backend/package*.json ./
+
+# Instalar dependencias
+RUN npm ci
+
+# Copiar código fuente
+COPY backend/ ./
+
+# Variables de entorno por defecto para desarrollo
+ENV NODE_ENV=development
+ENV PORT=3001
+ENV DATABASE_URL=postgresql://biblioteka_user:biblioteka_pass@database:5432/biblioteka_dev
+ENV JWT_SECRET=dev-secret-key-change-in-production
+ENV REDIS_URL=redis://redis:6379
+
+# Generar cliente Prisma
+RUN npx prisma generate
+
+# Exponer puerto
+EXPOSE 3001
+
+# Comando para desarrollo con hot-reload (nodemon)
+CMD ["npm", "run", "dev"]
