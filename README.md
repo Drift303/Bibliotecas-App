@@ -512,7 +512,7 @@ Este proyecto está bajo licencia **MIT**. Ver [LICENSE](LICENSE) para detalles.
 
 ---
 
-**Última actualización:** Junio 2024  
+**Última actualización:**  02 Junio 2024  
 **Versión del Documento:** 1.0  
 **Autor:** Software Architecture Team
 
