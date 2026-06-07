@@ -1,202 +1,387 @@
 # 📚 Biblioteca Inteligente SaaS MVP
 
-## Descripción General
+## 🎯 Fase Actual: v0.2.0 — RBAC + User Management + Multi-Tenant Strict
 
-**Biblioteca Inteligente** es una plataforma SaaS multi-tenant, híbrida y de alta disponibilidad diseñada para modernizar la gestión de bibliotecas escolares. Ofrece dos modos de operación:
-
-- **☁️ Cloud Mode (SaaS)**: Despliegue en nube con PostgreSQL, ideal para instituciones con conectividad constante.
-- **🏠 Localhost Mode (Hybrid)**: Despliegue local con Docker Compose y fallback a SQLite, perfecto para entornos educativos con conectividad limitada.
-
-### Características Principales
-
-| Característica | Descripción |
-|---|---|
-| **Multi-tenant** | Identificación por dominio de correo institucional (ej: `@jmmorelos.edu.mx`) o código CCT |
-| **Offline-First Selectivo** | Alumnos en tiempo real; Bibliotecarios con IndexedDB/Dexie.js sin conexión |
-| **Lector de Códigos de Barras** | Integración con cámara para escaneo y lectura automática de ISBN/EAN13 |
-| **PWA Completa** | Funcionamiento offline, instalable en móviles y desktops |
-| **Importación Masiva** | Carga de catálogos desde Excel mediante parseador NodeJS |
-| **Seguridad Multi-capa** | JWT + HttpOnly Cookies, SaaS Guard middleware, aislamiento por tenant_id |
-| **Sincronización Inteligente** | Cola de sincronización con reintentos automáticos para operaciones offline |
+**Estado**: Backend estructurado con Clean Architecture, RBAC implementado, gestión completa de usuarios, modelo Prisma multi-tenant. Frontend en construcción.
 
 ---
 
-## 🚀 Inicio Rápido
+## ✨ Cambios v0.2.0 (Junio 6, 2026)
 
-### Requisitos Previos
+### Agregado
+- ✅ **RBAC (Role-Based Access Control)**: middleware `roleGuard` para proteger endpoints por rol (student, librarian, admin_plantel, superadmin).
+- ✅ **User Management**: CRUD completo de usuarios con validación Zod, aislamiento por tenant, eliminación lógica.
+- ✅ **Schema Multi-Tenant Strict**: relaciones inversas en Prisma, unique constraints por tenant (email, studentId, barcode), nuevos campos en Book/Loan.
+- ✅ **Transacciones Atómicas**: `prisma.$transaction` en create/return loan y sync bulk.
+- ✅ **Postman Collection**: endpoints para Books, Loans, Auth, Users con validaciones y flujos RBAC.
 
-Instala las herramientas necesarias antes de comenzar:
+### Por Qué
+- **RBAC**: Seguridad: solo librarians/admins pueden gestionar usuarios; students solo leen libros y sus préstamos.
+- **User Management**: Requisito funcional: librarians crean/actualizar alumnos; admins crean librarians.
+- **Multi-Tenant Strict**: Garantía: datos de un tenant NUNCA accesibles por otro; constraints en BD.
+- **Transacciones**: Integridad: si sync falla parcialmente, rollback automático; no hay libros en estado inconsistente.
+
+### Modificado
+- `server.js`: montadas rutas `/api/users`, middlewares RBAC, stack de seguridad.
+- `prisma/schema.prisma`: relaciones Tenant→(users, books, loans), nuevos campos, constraints.
+- `seed.js`: popula `studentId`, `department`, `barcode` en usuarios; 2 tenants, 4 usuarios, 5 libros.
+- `postman_collection.json`: nueva carpeta "Users" con 5 requests (list, create valid/invalid, duplicate, RBAC test).
+
+---
+
+## 📋 Descripción General
+
+**Biblioteca Inteligente** es una plataforma SaaS multi-tenant diseñada para modernizar la gestión de bibliotecas escolares.
+
+### Características
+
+| Característica | Estado | Descripción |
+|---|---|---|
+| **Multi-tenant** | ✅ Done | Aislamiento estricto por dominio de correo (@escuela.edu.mx) o CCT |
+| **RBAC** | ✅ Done | Roles (student, librarian, admin_plantel, superadmin) con permisos granulares |
+| **JWT + HttpOnly Cookies** | ✅ Done | Autenticación segura, cookies imposibles de acceder vía JS |
+| **Gestión de Usuarios** | ✅ Done | CRUD con validación, duplicate detection, eliminación lógica |
+| **Libros** | ✅ Done | Crear, listar (filtrado por tenant), física (good/damaged/lost) + lógica (active/borrowed/deleted) |
+| **Préstamos** | ✅ Done | Crear, devolver con cálculo de multas (días tarde × 5 MXN), transacciones atómicas |
+| **Sync Offline** | ✅ Done | POST `/api/sync/loans` para procesar lote de transacciones offline en BD (transactional) |
+| **Transacciones BD** | ✅ Done | Todas operaciones críticas usan `prisma.$transaction` |
+| **Offline-First Frontend** | 🚧 WIP | Vite + React, IndexedDB para Service Worker, fallback SQLite |
+| **Barcode Scanner** | 📋 TODO | Integración con cámara para ISBN/EAN13 |
+| **Excel Import** | 📋 TODO | Carga masiva de catálogos |
+
+---
+
+## 🏗️ Estructura del Proyecto
+
+```
+Bibliotecas-App/
+├── backend/                           # Express + Prisma + PostgreSQL
+│   ├── src/
+│   │   ├── config/                   # Configuración (Prisma singleton)
+│   │   ├── middlewares/              # Auth, SaaS Guard, RBAC
+│   │   ├── validators/               # Zod schemas
+│   │   ├── controllers/              # Lógica de negocio
+│   │   └── routes/                   # Endpoints
+│   ├── prisma/
+│   │   ├── schema.prisma             # Multi-tenant models
+│   │   └── seed.js                   # Seed data (tenants, users, books)
+│   ├── server.js                      # Express app
+│   ├── package.json
+│   ├── README.md                      # Docs backend
+│   └── postman_collection.json       # Postman v2.1.0
+├── frontend/                          # Vite + React + Tailwind
+│   ├── src/
+│   │   ├── App.jsx
+│   │   ├── main.jsx
+│   │   └── index.css
+│   ├── package.json
+│   └── index.html
+├── docker/                            # Dockerfiles optimizados
+│   ├── Dockerfile.backend             # Node 18 Alpine + npm ci + Prisma generate
+│   ├── Dockerfile.frontend            # Node 18 Alpine + Vite build
+│   ├── Dockerfile.postgres            # PostgreSQL 15 Alpine
+│   ├── init-db.sql                   # SQL init scripts
+│   └── seed-db.sql                   # SQL seed (opcional)
+├── docker-compose.yml                 # Orquestación: backend, frontend, db, redis
+├── README.md                          # Este archivo
+└── docs/
+    ├── IMPLEMENTATION_PLAN.md         # Plan técnico
+    └── ...
+```
+
+---
+
+## 🔐 Seguridad Multi-Capa
+
+### Layer 1: Autenticación (authGuard Middleware)
+```javascript
+POST /api/auth/login
+├─ Valida identifier (email@escuela.edu.mx o CCT) + password
+├─ Compara password con bcrypt
+├─ Genera JWT: { id, role, tenantId, email }
+├─ Configura cookie HttpOnly, Secure, SameSite=Strict
+└─ Siguientes requests incluyen cookie automáticamente
+```
+
+### Layer 2: SaaS Guard (saasGuard Middleware)
+```javascript
+Si tenant.status === SUSPENDED → 403 Forbidden
+```
+
+### Layer 3: RBAC (roleGuard Middleware)
+```javascript
+roleGuard(['librarian', 'admin_plantel', 'superadmin'])
+├─ Verifica req.user.role está en lista permitida
+└─ Si no → 403 Forbidden
+```
+
+### Layer 4: Multi-Tenant Isolation
+- **Inyección de tenantId**: todas las queries filtran por `req.tenantId` del token.
+- **Unique Constraints por Tenant**: `@@unique([tenantId, email])`, `@@unique([tenantId, studentId])`, `@@unique([tenantId, barcode])`.
+- **Imposible acceder datos de otro tenant** (BD + app logic).
+
+### Layer 5: Input Validation (Zod)
+- Todos los endpoints validan schemas antes de procesar.
+- Retorna 400 con detalles de error si validation falla.
+
+### Layer 6: Transactional Integrity (Prisma Transactions)
+```javascript
+prisma.$transaction([...]) // Todo o nada
+├─ Si alguna inserción falla → rollback automático
+└─ No hay estado parcial/inconsistente en BD
+```
+
+---
+
+## 📡 Endpoints Principales (Protegidos)
+
+### Auth (Sin RBAC)
+- `POST /api/auth/login` — Login (identifier + password) → cookie HttpOnly.
+- `POST /api/auth/logout` — Logout (limpia cookie).
+
+### Books (Auth Required)
+- `GET /api/books` — Listar libros del tenant (excluye DELETED_LOGICAL).
+- `POST /api/books` — Crear libro (requiere auth).
+
+### Loans (Auth Required)
+- `POST /api/loans` — Crear préstamo (transactional).
+- `POST /api/loans/:id/return` — Devolver libro (calcula multa si es tarde, transactional).
+
+### Users (RBAC: librarian, admin_plantel, superadmin)
+- `GET /api/users` — Lista usuarios del tenant.
+- `POST /api/users` — Crear usuario (valida uniqueness por tenant).
+- `PUT /api/users/:id` — Actualizar usuario.
+- `DELETE /api/users/:id` — Eliminación lógica (`isDeleted = true`).
+
+### Sync (Auth Required)
+- `POST /api/sync/loans` — Procesa lote offline en transacción atómica.
+
+---
+
+## 🚀 Arrancar con Docker Compose
+
+### Paso 1: Build
+```bash
+cd Bibliotecas-App
+docker compose build --no-cache
+```
+
+### Paso 2: Levantar servicios
+```bash
+docker compose up -d
+# Espera a que database esté healthy (~10s)
+```
+
+### Paso 3: Pushear schema Prisma a BD
+```bash
+docker compose exec backend npx prisma db push --skip-generate
+```
+
+### Paso 4: Seed (crea 2 tenants, 4 usuarios, 5 libros)
+```bash
+docker compose exec backend npm run seed
+```
+
+### Paso 5: Verificar
+```bash
+# Health check
+curl http://localhost:3001/health
+
+# Test DB
+curl http://localhost:3001/test-db
+```
+
+### Paso 6: Frontend
+```
+Frontend: http://localhost:3000
+Backend API: http://localhost:3001/api
+```
+
+### Parar servicios
+```bash
+docker compose down
+# O si quieres limpiar volúmenes:
+docker compose down -v
+```
+
+---
+
+## 🧪 Testing con Postman
+
+**Ver la guía completa**: [POSTMAN_TEST_GUIDE.md](POSTMAN_TEST_GUIDE.md) con 9 pasos detallados, credenciales correctas, payloads exactos y troubleshooting.
+
+### Credenciales de Seed (v0.2.0)
+
+| Email | CCT | Password | Rol | Tenant | Propósito |
+|---|---|---|---|---|---|
+| `ana@activa.edu.mx` | `CCT-ACT-001` | `Password123!` | librarian | activa | **Principal - uso en pruebas** |
+| `luis@activa.edu.mx` | `CCT-ACT-STU-01` | `Alumno123!` | student | activa | RBAC test (genera 403) |
+| `maria@suspendida.edu.mx` | - | `Password123!` | librarian | suspendida | SaaS Guard test (genera 403) |
+| `pedro@suspendida.edu.mx` | - | `Alumno123!` | student | suspendida | - |
+
+### Resumen Rápido
+1. Importa `backend/postman_collection.json` en Postman.
+2. **Activa cookie jar** (Settings → Cookies).
+3. **Login Ana** (librarian): `ana@activa.edu.mx` / `Password123!`
+   - Resultado: cookie `token` capturada automáticamente.
+4. **Get Books**: `GET /api/books` (usa cookie).
+   - Resultado: 5 libros de tenant `activa.edu.mx`.
+5. **Create User**: `POST /api/users` (requiere librarian role).
+   - Payload: nombre, email, role, studentId, department, barcode.
+   - Resultado: usuario creado (201) o 400 si duplicado.
+6. **RBAC Test**: Intenta crear usuario como student (`luis@activa.edu.mx` / `Alumno123!`).
+   - Resultado: 403 Forbidden.
+7. **Suspended Tenant Test**: Intenta login como `maria@suspendida.edu.mx` / `Password123!`.
+   - Resultado: 403 Forbidden (tenant SUSPENDED).
+
+---
+
+## 📊 Flujos Principales
+
+### 1. Autenticación
+```
+POST /api/auth/login → validar → JWT en cookie → incluida automáticamente en requests
+```
+
+### 2. Crear Préstamo (Transactional)
+```
+POST /api/loans 
+  ├─ authGuard: valida cookie JWT
+  ├─ saasGuard: valida tenant no suspendido
+  ├─ Validación Zod: userId, bookId, dueDate
+  ├─ prisma.$transaction:
+  │   ├─ Crea Loan record
+  │   ├─ Actualiza Book.available = false
+  │   └─ Si falla → rollback
+  └─ Retorna Loan (200)
+```
+
+### 3. Devolver Préstamo (Con Multa)
+```
+POST /api/loans/:id/return
+  ├─ Calcula días late: (ahora - dueDate) / (1000*60*60*24)
+  ├─ Multa: max(0, días_late) * 5.0 MXN
+  ├─ prisma.$transaction:
+  │   ├─ Actualiza Loan.status = RETURNED, fineAmount = multa
+  │   ├─ Actualiza Book.available = true
+  │   └─ Si falla → rollback
+  └─ Retorna Loan con multa (200)
+```
+
+### 4. Sync Offline (Service Worker)
+```
+POST /api/sync/loans
+  ├─ Payload: { tenantId, transactions: [...] }
+  ├─ Validación: JWT + tenantId match
+  ├─ prisma.$transaction (todos):
+  │   ├─ Para cada transacción:
+  │   │   ├─ Crea Loan
+  │   │   ├─ Actualiza Book si status = BORROWED
+  │   │   └─ Si falla → rollback total
+  │   └─ Retorna array de Loans creados
+  └─ Frontend: procesa respuesta, limpia IndexedDB
+```
+
+### 5. Gestión de Usuarios (RBAC)
+```
+POST /api/users (librarian+)
+  ├─ roleGuard: valida req.user.role en ['librarian', 'admin_plantel', 'superadmin']
+  ├─ Validación Zod: name, email, role, studentId, department, barcode
+  ├─ Inyecta tenantId del token
+  ├─ Valida uniqueness (email, studentId, barcode) por tenant
+  ├─ Si password: hash con bcryptjs
+  ├─ Crea usuario
+  └─ Retorna user (200) o 400 si duplicado
+```
+
+---
+
+## 🛠️ Stack Técnico
+
+### Backend
+- **Runtime**: Node.js 18 (Alpine)
+- **Framework**: Express.js
+- **ORM**: Prisma (Postgres)
+- **Validación**: Zod
+- **Auth**: JWT + bcryptjs
+- **Middleware**: helmet, express-rate-limit, cookie-parser, cors
+- **Dev**: nodemon (hot-reload)
+
+### Frontend
+- **Build**: Vite
+- **Framework**: React 18
+- **Styling**: Tailwind CSS
+- **Storage**: IndexedDB (offline) + Dexie.js
+- **HTTP**: Axios
+- **Export**: jsPDF (reportes)
+
+### Database
+- **Primary**: PostgreSQL 15 (Alpine)
+- **Cache**: Redis 7 (Alpine, opcional)
+- **Fallback**: SQLite (si `ENABLE_SQLITE_FALLBACK=true`)
+
+### Infraestructura
+- **Contenedores**: Docker Compose
+- **Orquestación**: Postgres, Redis, Backend (hot-reload), Frontend (Vite dev server)
+- **Redes**: Bridge network (subnet 172.25.0.0/16)
+
+---
+
+## 📈 Roadmap Futuro
+
+### v0.3.0 (Julio)
+- [ ] Frontend: Login UI, Dashboard, Book listing
+- [ ] Barcode scanner integration
+- [ ] Service Worker + IndexedDB
+
+### v0.4.0 (Agosto)
+- [ ] Excel import para catálogos masivos
+- [ ] Reports (PDF) de préstamos
+- [ ] Notificaciones de libros atrasados
+
+### v1.0.0 (Septiembre)
+- [ ] Pruebas UAT con una escuela piloto
+- [ ] Optimizaciones de performance
+- [ ] Deployment a producción (Azure/AWS)
+
+---
+
+## 🤝 Equipo
+
+- **Backend/RBAC**: Implementación completa (auth, users, CRUD, transacciones)
+- **Frontend**: En construcción (Vite + React)
+- **DevOps**: Docker Compose, CI/CD (TODO)
+
+---
+
+## 📚 Documentación
+
+- [Backend README](backend/README.md) — API, endpoints, RBAC, flujos, FAQ
+- [Implementation Plan](docs/IMPLEMENTATION_PLAN.md) — Plan técnico, tareas
+- [Postman Collection](backend/postman_collection.json) — Requests de prueba
+
+---
+
+## ⚡ Quick Start (Sin Docker)
 
 ```bash
-# Verificar versiones mínimas recomendadas
-docker --version      # v24.0+
-docker compose --version  # v2.20+
-node --version        # v18+
-npm --version         # v10+
-```
-
-**Descargas:**
-- [Docker Desktop](https://www.docker.com/products/docker-desktop)
-- [Node.js LTS](https://nodejs.org/)
-
-### Paso 1: Clonar el Repositorio
-
-```bash
-git clone https://github.com/tu-organizacion/biblioteca-inteligente.git
-cd biblioteca-inteligente
-```
-
-### Paso 2: Configurar Variables de Entorno
-
-```bash
-# Copiar archivo de ejemplo
-cp .env.example .env.local
-
-# Editar .env.local con valores específicos de tu entorno
-# (Base de datos, JWT_SECRET, etc.)
-nano .env.local
-```
-
-**Variables críticas a cambiar en producción:**
-```
-JWT_SECRET=your-super-secret-key-here
-DATABASE_PASSWORD=your-secure-password
-COOKIE_SECRET=another-secret-key
-```
-
-### Paso 3: Levantar los Contenedores
-
-```bash
-# Construir e iniciar en modo background
-docker compose up --build -d
-
-
-# Detener y eliminar volúmenes (⚠️ BORRA DATOS)
-├── 📄 .env.example                   # Plantilla de variables de entorno
-│   │   │   ├── layout.js
-│   │   ├── SearchAutoComplete.js
-│   │       ├── LoginForm.js
-│   ├── 📄 nodemon.json               # Configuración hot-reload
-│   │   ├── 🔐 middleware/
-# Biblioteca Inteligente — Fase Inicial (Conexión Backend ↔ DB ↔ Frontend)
-
-Este repositorio contiene un conjunto inicial de archivos para probar y validar la arquitectura básica del MVP:
-
-- Backend: Express + Prisma (PostgreSQL)
-- Frontend: Vite + React + Tailwind (diagnóstico de conexión)
-- Scripts de inicialización y seeding para pruebas locales
-
-Archivos clave creados en esta fase:
-
-- `/.gitignore` — reglas para Node, Prisma, .env y artefactos locales
-- `/backend/package.json` — dependencias y scripts del backend
-- `/backend/prisma/schema.prisma` — modelo `Tenant` (id, name, emailDomain, status)
-- `/backend/prisma/seed.js` — script de seed para crear 2 tenants (activo y suspendido)
-- `/backend/server.js` — Express con endpoints `/api/health` y `/api/test-db`
-- `/frontend/package.json` — Vite + React + Tailwind + jsPDF + axios
-- `/frontend/index.html`, `/frontend/src/*` — aplicación React mínima para diagnóstico
-
-Qué se valida con este entregable:
-
-- El backend responde en `/api/health`.
-- El backend puede leer Tenants desde PostgreSQL y exponerlos en `/api/test-db`.
-- El frontend puede consumir ambos endpoints y mostrar un estado visual.
-
-Librerías instaladas y por qué:
-
-- Backend:
-     - `express`: servidor HTTP minimal y flexible.
-     - `@prisma/client` y `prisma`: ORM tipo-safe para modelado y migraciones.
-     - `dotenv`: cargar variables de entorno en contenedores/desarrollo.
-     - `cors`: habilitar peticiones desde el frontend local.
-
-- Frontend:
-     - `vite`: dev server ultrarrápido para React.
-     - `react`, `react-dom`: framework UI.
-     - `tailwindcss`, `postcss`, `autoprefixer`: utilidades CSS para Angel (maquetado rápido y responsive).
-     - `axios`: cliente HTTP sencillo para llamadas al backend.
-     - `jspdf`: utilitario para generación de PDFs (Vanesa lo usará más adelante).
-
-Comandos exactos para levantar y probar localmente
-
-1) Construir y levantar con Docker Compose (si usas la configuración `docker-compose.yml` en la raíz):
-
-```powershell
-# Desde la raíz del proyecto
-docker compose up --build -d
-
-# Ver logs (opcional)
-# Tests del frontend
-```
-
-2) Migraciones de Prisma y seed (ejecutar dentro del contenedor `backend`):
-
-```powershell
-# Ejecutar migraciones (crea tablas)
-docker compose exec frontend npm run test
-
-# Ejecutar seed para insertar 2 tenants
-docker compose exec backend node prisma/seed.js
-```
-
-3) Probar endpoints desde tu host (o usar el frontend):
-
-```powershell
-# Health
-curl http://localhost:3001/api/health
-
-# Traer tenants
-curl http://localhost:3001/api/test-db
-```
-
-4) Alternativa: ejecutar localmente sin Docker (desarrollo rápido)
-
-```powershell
 # Backend
-
-cd <repo>/backend
+cd backend
 npm install
-# Configurar .env con DATABASE_URL apuntando a tu PostgreSQL local
-npm run prisma:generate
-npm run prisma:migrate
+# Configurar .env con DATABASE_URL, JWT_SECRET, CORS_ORIGIN
+npx prisma db push
 npm run seed
-npm run dev
+npm run dev        # http://localhost:3001
 
 # Frontend (en otra terminal)
-cd <repo>/frontend
+cd frontend
 npm install
-npm run dev
-```
-
-Rutas y archivos para el equipo
-
-- Backend: [backend/server.js](backend/server.js) — endpoints básicos de prueba
-- Prisma schema: [backend/prisma/schema.prisma](backend/prisma/schema.prisma)
-- Seed: [backend/prisma/seed.js](backend/prisma/seed.js)
-- Frontend: [frontend/src/App.jsx](frontend/src/App.jsx) — interfaz de diagnóstico
-
-Notas finales
-
-- Esta fase inicial es deliberadamente mínima: sirve para validar conectividad y flujo de datos end-to-end.
-- Siguientes pasos recomendados: implementar autenticación, agregar tests automáticos, e integrar el esquema completo de `Tenant` en la lógica de negocio (middleware de tenancy).
-
-Si quieres, puedo ahora:
-
-- Ejecutar (en tu entorno) los comandos de migración y seed (si me autorizas a correr `docker compose up --build`), o
-- Añadir los scripts de Dockerfile para backend/frontend adaptados a esta configuración mínima Vite/Express.
-
-# Build para producción
-docker compose exec frontend npm run build
-
-# Análisis de bundle
-docker compose exec frontend npm run analyze
+npm run dev        # http://localhost:3000
 ```
 
 ---
 
-## 🛠️ Solución de Problemas
-
-### ❌ Error: "Puerto 3000 ya está en uso"
+**Última actualización**: Junio 6, 2026 | **Versión**: 0.2.0 (RBAC + User Management)
 
 ```bash
 # Encontrar proceso usando el puerto
