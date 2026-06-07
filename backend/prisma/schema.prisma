@@ -19,4 +19,92 @@ model Tenant {
   status      TenantStatus @default(ACTIVE)
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
+  
+  // Relations
+  users User[]
+  books Book[]
+  loans Loan[]
+}
+
+model User {
+  id         String   @id @default(uuid())
+  tenantId   String
+  tenant     Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name       String
+  email      String
+  cct        String?  // Código único de escuela, opcional
+  studentId  String?  // matrícula / número de control
+  department String?  
+  barcode    String?  
+  password   String?  // hashed password, optional for students
+  role       String   @default("user")
+  isDeleted  Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  
+  // Relations
+  loans Loan[]
+
+  @@unique([tenantId, email])
+  @@unique([tenantId, cct])
+  @@unique([tenantId, studentId])
+  @@unique([tenantId, barcode])
+  @@index([tenantId])
+}
+
+model Book {
+  id            String        @id @default(uuid())
+  tenantId      String
+  tenant        Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  title         String
+  author        String
+  isbn          String?
+  publisher     String?
+  locationHall  String
+  locationShelf String
+  statusPhysical PhysicalStatus @default(GOOD)
+  statusLogical LogicalStatus   @default(ACTIVE)
+  available     Boolean       @default(true)
+  createdAt     DateTime      @default(now())
+
+  // Relations
+  loans Loan[]
+
+  @@index([tenantId])
+}
+
+enum PhysicalStatus {
+  GOOD
+  DAMAGED
+  LOST
+}
+
+enum LogicalStatus {
+  ACTIVE
+  BORROWED
+  DELETED_LOGICAL
+}
+
+// Book model includes location and status fields above
+
+enum LoanStatus {
+  ACTIVE
+  RETURNED
+}
+
+model Loan {
+  id         String     @id @default(uuid())
+  tenantId   String
+  tenant     Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bookId     String
+  book       Book       @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  loanDate   DateTime   @default(now())
+  returnDate DateTime?
+  status     LoanStatus @default(ACTIVE)
+  dueDate    DateTime?
+  fineAmount Float      @default(0)
+  createdAt  DateTime   @default(now())
+
+  @@index([tenantId])
 }
