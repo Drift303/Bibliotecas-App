@@ -1,3 +1,9 @@
+
+// Esquema completo con aislamiento multi-tenant,
+// estados de suscripción, inventario, préstamos,
+// multas, credenciales y cola de sincronización offline.
+
+
 generator client {
   provider = "prisma-client-js"
 }
@@ -7,16 +13,231 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+
+// ENUMS
+
+
 enum TenantStatus {
   ACTIVE
   SUSPENDED
+  DEMO
 }
 
+enum TenantPlan {
+  MONTHLY
+  ANNUAL
+}
+
+enum UserRole {
+  STUDENT
+  LIBRARIAN
+  SCHOOL_ADMIN
+  SUPER_ADMIN
+}
+
+enum BookStatus {
+  AVAILABLE
+  LOANED
+  RETIRED
+}
+
+enum BookCondition {
+  NEW
+  EXCELLENT
+  REGULAR
+  DAMAGED
+}
+
+enum LoanStatus {
+  ACTIVE
+  RETURNED
+  OVERDUE
+}
+
+enum SyncOperation {
+  CREATE_LOAN
+  RETURN_LOAN
+  RETIRE_BOOK
+}
+
+enum SyncStatus {
+  PENDING
+  SYNCED
+  FAILED
+}
+
+
+// TENANT (Escuela / Inquilino)
+// Tabla raíz del sistema multi-tenant.
+// Cada escuela tiene su propio registro aquí.
+
+
 model Tenant {
-  id          String       @id @default(uuid())
-  name        String
-  emailDomain String       @unique
-  status      TenantStatus @default(ACTIVE)
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
+  id              String       @id @default(uuid())
+  name            String
+  emailDomain     String?      @unique  // ej: escuela.edu.mx
+  schoolCode      String?      @unique  // ej: ESC-MEX-102 (para escuelas sin dominio)
+  status          TenantStatus @default(ACTIVE)
+  plan            TenantPlan   @default(MONTHLY)
+  billingCutDate  DateTime?                       // fecha de corte de facturación
+  logoUrl         String?                         // logo de la escuela para credenciales
+  loanLimitDays   Int          @default(7)        // días máximos de préstamo
+  finePerDay      Float        @default(5.0)      // multa por día de atraso (en pesos)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  // Relaciones
+  users           User[]
+  books           Book[]
+  loans           Loan[]
+  syncQueue       SyncQueue[]
+
+  @@map("tenants")
+}
+
+
+// USER (Usuarios: alumnos, bibliotecarios, admins)
+// Todos los roles viven en esta tabla, separados por tenantId.
+
+
+model User {
+  id             String    @id @default(uuid())
+  tenantId       String                           // aislamiento multi-tenant
+  name           String
+  email          String
+  role           UserRole  @default(STUDENT)
+  matricula      String?                          // ID de credencial / matrícula
+  barcodeId      String?   @unique               // código de barras único generado
+  department     String?                          // carrera / área / departamento
+  passwordHash   String?                          // solo para LIBRARIAN, SCHOOL_ADMIN, SUPER_ADMIN
+  isActive       Boolean   @default(true)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  // Relaciones
+  tenant         Tenant    @relation(fields: [tenantId], references: [id])
+  loans          Loan[]    @relation("StudentLoans")
+  processedLoans Loan[]    @relation("LibrarianLoans")
+  fines          Fine[]
+
+  @@unique([tenantId, email])       // email único por escuela
+  @@unique([tenantId, matricula])   // matrícula única por escuela
+  @@map("users")
+}
+
+
+// BOOK (Inventario de libros)
+// Cada libro pertenece a un tenant.
+// Las bajas son lógicas (status = RETIRED).
+
+
+model Book {
+  id          String        @id @default(uuid())
+  tenantId    String
+  title       String
+  author      String
+  isbn        String?
+  category    String?
+  publisher   String?
+  year        Int?
+  status      BookStatus    @default(AVAILABLE)
+  condition   BookCondition @default(NEW)
+  // Localización física para el mapa 2D de estanterías
+  aisle       String?       // ej: "A", "B", "C"
+  shelf       String?       // ej: "1", "2", "3"
+  position    String?       // ej: "lado izquierdo"
+  coverUrl    String?
+  isDeleted   Boolean       @default(false)  // baja lógica
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  // Relaciones
+  tenant      Tenant        @relation(fields: [tenantId], references: [id])
+  loans       Loan[]
+
+  @@map("books")
+}
+
+// LOAN (Préstamos)
+// Registra cada préstamo activo, devuelto o vencido.
+
+
+model Loan {
+  id            String     @id @default(uuid())
+  tenantId      String
+  bookId        String
+  studentId     String                         // usuario con rol STUDENT
+  librarianId   String?                        // quien procesó el préstamo
+  status        LoanStatus @default(ACTIVE)
+  loanDate      DateTime   @default(now())
+  dueDate       DateTime                       // calculado según loanLimitDays del tenant
+  returnDate    DateTime?                      // se llena al devolver
+  // Control de estado físico al momento de devolución
+  conditionOnReturn BookCondition?
+  notes         String?
+  // Para sincronización offline: registra si vino de la cola
+  fromSync      Boolean    @default(false)
+  syncQueueId   String?
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  // Relaciones
+  tenant        Tenant     @relation(fields: [tenantId], references: [id])
+  book          Book       @relation(fields: [bookId], references: [id])
+  student       User       @relation("StudentLoans", fields: [studentId], references: [id])
+  librarian     User?      @relation("LibrarianLoans", fields: [librarianId], references: [id])
+  fine          Fine?
+
+  @@map("loans")
+}
+
+
+// FINE (Multas)
+// Una multa por préstamo. Se calcula automáticamente
+// según finePerDay del tenant y los días de atraso.
+
+
+model Fine {
+  id        String   @id @default(uuid())
+  tenantId  String
+  loanId    String   @unique
+  userId    String
+  amount    Float                      // monto calculado
+  daysLate  Int                        // días de atraso
+  isPaid    Boolean  @default(false)
+  paidAt    DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relaciones
+  loan      Loan     @relation(fields: [loanId], references: [id])
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@map("fines")
+}
+
+
+// SYNC QUEUE (Cola de sincronización offline)
+// Cuando el bibliotecario opera sin red, las operaciones
+// se guardan en IndexedDB (frontend). Al volver la conexión,
+// el frontend envía esta cola al backend para procesarla.
+// Esta tabla registra cada operación recibida y su estado.
+
+
+model SyncQueue {
+  id          String        @id @default(uuid())
+  tenantId    String
+  operation   SyncOperation                    // qué operación fue
+  payload     Json                             // datos completos de la operación
+  status      SyncStatus    @default(PENDING)
+  errorMsg    String?                          // si falló, por qué
+  // Timestamp original del dispositivo offline (para ordenar operaciones)
+  clientTime  DateTime
+  processedAt DateTime?
+  createdAt   DateTime      @default(now())
+
+  // Relaciones
+  tenant      Tenant        @relation(fields: [tenantId], references: [id])
+
+  @@map("sync_queue")
 }
