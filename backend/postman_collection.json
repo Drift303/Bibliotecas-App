@@ -1,0 +1,194 @@
+{
+  "info": {
+    "name": "Bibliotecas-Backend-Collection",
+    "_postman_id": "biblio-collection-0001",
+    "description": "Colección para probar autenticación, validaciones, tenant suspendido y sincronización bulk (Service Worker).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Login - por email institucional (librarian)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"identifier\": \"ana@activa.edu.mx\",\n  \"password\": \"Password123!\"\n}"
+        },
+        "url": { "raw": "{{baseUrl}}/api/auth/login", "host": ["{{baseUrl}}"], "path": ["api","auth","login"] }
+      },
+      "response": []
+    },
+    {
+      "name": "Login - por CCT (librarian)",
+      "request": {
+        "method": "POST",
+        "header": [ { "key": "Content-Type", "value": "application/json" } ],
+        "body": { "mode": "raw", "raw": "{\n  \"identifier\": \"CCT-ACT-001\",\n  \"password\": \"Password123!\"\n}" },
+        "url": { "raw": "{{baseUrl}}/api/auth/login", "host": ["{{baseUrl}}"], "path": ["api","auth","login"] }
+      },
+      "response": []
+    },
+    {
+      "name": "Login - datos inválidos (validación)",
+      "request": {
+        "method": "POST",
+        "header": [ { "key": "Content-Type", "value": "application/json" } ],
+        "body": { "mode": "raw", "raw": "{\n  \"identifier\": \"a\",\n  \"password\": \"1\"\n}" },
+        "url": { "raw": "{{baseUrl}}/api/auth/login", "host": ["{{baseUrl}}"], "path": ["api","auth","login"] }
+      },
+      "response": []
+    },
+    {
+      "name": "Login - tenant suspendido (espera 403)",
+      "request": {
+        "method": "POST",
+        "header": [ { "key": "Content-Type", "value": "application/json" } ],
+        "body": { "mode": "raw", "raw": "{\n  \"identifier\": \"maria@suspendida.edu.mx\",\n  \"password\": \"Password123!\"\n}" },
+        "url": { "raw": "{{baseUrl}}/api/auth/login", "host": ["{{baseUrl}}"], "path": ["api","auth","login"] }
+      },
+      "response": []
+    },
+    {
+      "name": "Sync - enviar lote de loans (Service Worker)",
+      "request": {
+        "method": "POST",
+        "header": [ { "key": "Content-Type", "value": "application/json" } ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"tenantId\": \"<TENANT_UUID>\",\n  \"transactions\": [\n    {\n      \"userId\": \"<USER_UUID>\",\n      \"bookId\": \"<BOOK_UUID>\",\n      \"loanDate\": \"2026-06-01T12:00:00Z\",\n      \"status\": \"BORROWED\"\n    }\n  ]\n}"
+        },
+        "url": { "raw": "{{baseUrl}}/api/sync/loans", "host": ["{{baseUrl}}"], "path": ["api","sync","loans"] }
+      },
+      "response": []
+    },
+    {
+      "name": "Books",
+      "item": [
+        {
+          "name": "Get Books",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/books", "host": ["{{baseUrl}}"], "path": ["api","books"] }
+          },
+          "response": []
+        },
+        {
+          "name": "Create Book - válido",
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Content-Type", "value": "application/json" } ],
+            "body": { "mode": "raw", "raw": "{\n  \"title\": \"La casa de los espíritus\",\n  \"author\": \"Isabel Allende\",\n  \"locationHall\": \"D\",\n  \"locationShelf\": \"4\",\n  \"isbn\": \"9780060883252\",\n  \"publisher\": \"Plaza & Janés\"\n}" },
+            "url": { "raw": "{{baseUrl}}/api/books", "host": ["{{baseUrl}}"], "path": ["api","books"] }
+          },
+          "response": []
+        },
+        {
+          "name": "Create Book - inválido (falta campos)",
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Content-Type", "value": "application/json" } ],
+            "body": { "mode": "raw", "raw": "{\n  \"title\": \"\",\n  \"author\": \"\"\n}" },
+            "url": { "raw": "{{baseUrl}}/api/books", "host": ["{{baseUrl}}"], "path": ["api","books"] }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Users",
+      "item": [
+        {
+          "name": "List Users (as librarian)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/users", "host": ["{{baseUrl}}"], "path": ["api","users"] }
+          },
+          "response": []
+        },
+        {
+          "name": "Create User - válido (alumno)",
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Content-Type", "value": "application/json" } ],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Marcos Estudiante\",\n  \"email\": \"marcos@activa.edu.mx\",\n  \"role\": \"student\",\n  \"studentId\": \"STU-ACT-0002\",\n  \"department\": \"Primaria\",\n  \"barcode\": \"BAR-ACT-0002\"\n}" },
+            "url": { "raw": "{{baseUrl}}/api/users", "host": ["{{baseUrl}}"], "path": ["api","users"] }
+          },
+          "response": []
+        },
+        {
+          "name": "Create User - inválido (email mal formado)",
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Content-Type", "value": "application/json" } ],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"X\",\n  \"email\": \"not-an-email\",\n  \"role\": \"student\",\n  \"studentId\": \"STU-ACT-0003\",\n  \"department\": \"Primaria\",\n  \"barcode\": \"BAR-ACT-0003\"\n}" },
+            "url": { "raw": "{{baseUrl}}/api/users", "host": ["{{baseUrl}}"], "path": ["api","users"] }
+          },
+          "response": []
+        },
+        {
+          "name": "Create User - duplicado (studentId) expect 400",
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Content-Type", "value": "application/json" } ],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Alumno Duplicado\",\n  \"email\": \"dup@activa.edu.mx\",\n  \"role\": \"student\",\n  \"studentId\": \"STU-ACT-0001\",\n  \"department\": \"Primaria\",\n  \"barcode\": \"BAR-ACT-9999\"\n}" },
+            "url": { "raw": "{{baseUrl}}/api/users", "host": ["{{baseUrl}}"], "path": ["api","users"] }
+          },
+          "response": []
+        },
+        {
+          "name": "Create User - as student (expect 403) [login as luis first]",
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Content-Type", "value": "application/json" } ],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Pedro intento\",\n  \"email\": \"pedro2@activa.edu.mx\",\n  \"role\": \"student\",\n  \"studentId\": \"STU-ACT-999\",\n  \"department\": \"Primaria\",\n  \"barcode\": \"BAR-ACT-999\"\n}" },
+            "url": { "raw": "{{baseUrl}}/api/users", "host": ["{{baseUrl}}"], "path": ["api","users"] }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Loans",
+      "item": [
+        {
+          "name": "Create Loan - válido",
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Content-Type", "value": "application/json" } ],
+            "body": { "mode": "raw", "raw": "{\n  \"userId\": \"<USER_UUID>\",\n  \"bookId\": \"<BOOK_UUID>\",\n  \"dueDate\": \"2026-06-20T00:00:00Z\"\n}" },
+            "url": { "raw": "{{baseUrl}}/api/loans", "host": ["{{baseUrl}}"], "path": ["api","loans"] }
+          },
+          "response": []
+        },
+        {
+          "name": "Create Loan - inválido (book missing)",
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Content-Type", "value": "application/json" } ],
+            "body": { "mode": "raw", "raw": "{\n  \"userId\": \"not-a-uuid\",\n  \"bookId\": \"also-not-uuid\"\n}" },
+            "url": { "raw": "{{baseUrl}}/api/loans", "host": ["{{baseUrl}}"], "path": ["api","loans"] }
+          },
+          "response": []
+        },
+        {
+          "name": "Return Loan - tardía (calcular multa)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/loans/<LOAN_UUID>/return", "host": ["{{baseUrl}}"], "path": ["api","loans","<LOAN_UUID>","return"] }
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "event": [],
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:3001" }
+  ]
+}
