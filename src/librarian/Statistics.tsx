@@ -7,11 +7,21 @@ export default function Statistics() {
         Estadísticas
       </h1>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid md:grid-cols-4 gap-4">
 
-        <div className="bg-white p-6 rounded-lg shadow">
+        <div className="bg-white shadow rounded p-6">
           <h2 className="text-gray-500">
-            Libros Prestados
+            Libros
+          </h2>
+
+          <p className="text-3xl font-bold">
+            250
+          </p>
+        </div>
+
+        <div className="bg-white shadow rounded p-6">
+          <h2 className="text-gray-500">
+            Alumnos
           </h2>
 
           <p className="text-3xl font-bold">
@@ -19,23 +29,23 @@ export default function Statistics() {
           </p>
         </div>
 
-        <div className="bg-white p-6 rounded-lg shadow">
+        <div className="bg-white shadow rounded p-6">
           <h2 className="text-gray-500">
-            Libros Disponibles
+            Préstamos
           </h2>
 
           <p className="text-3xl font-bold">
-            350
+            34
           </p>
         </div>
 
-        <div className="bg-white p-6 rounded-lg shadow">
+        <div className="bg-white shadow rounded p-6">
           <h2 className="text-gray-500">
-            Alumnos Activos
+            Escuelas
           </h2>
 
           <p className="text-3xl font-bold">
-            200
+            5
           </p>
         </div>
 

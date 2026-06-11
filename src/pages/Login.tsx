@@ -1,10 +1,44 @@
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 export default function Login() {
   const navigate = useNavigate();
 
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+
   const handleLogin = () => {
-    navigate("/dashboard");
+    // Alumno
+    if (
+      email === "alumno@biblioteka.com" &&
+      password === "1234"
+    ) {
+      localStorage.setItem("role", "student");
+      navigate("/catalog");
+      return;
+    }
+
+    // Bibliotecario
+    if (
+      email === "bibliotecario@biblioteka.com" &&
+      password === "1234"
+    ) {
+      localStorage.setItem("role", "librarian");
+      navigate("/dashboard");
+      return;
+    }
+
+    // SuperAdmin
+    if (
+      email === "admin@biblioteka.com" &&
+      password === "1234"
+    ) {
+      localStorage.setItem("role", "admin");
+      navigate("/schools");
+      return;
+    }
+
+    alert("Credenciales incorrectas");
   };
 
   return (
@@ -18,18 +52,22 @@ export default function Login() {
         <input
           type="email"
           placeholder="Correo"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
           className="w-full border p-2 rounded mb-4"
         />
 
         <input
           type="password"
           placeholder="Contraseña"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
           className="w-full border p-2 rounded mb-4"
         />
 
         <button
           onClick={handleLogin}
-          className="w-full bg-blue-600 text-white p-2 rounded"
+          className="w-full bg-blue-700 text-white p-2 rounded"
         >
           Iniciar Sesión
         </button>
@@ -40,7 +78,7 @@ export default function Login() {
 
         <button
           onClick={() => navigate("/register")}
-          className="w-full mt-2 border border-gray-300 p-2 rounded hover:bg-gray-100"
+          className="w-full mt-2 border border-gray-300 p-2 rounded"
         >
           Crear Cuenta
         </button>

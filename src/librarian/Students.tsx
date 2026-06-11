@@ -1,31 +1,59 @@
 import DashboardLayout from "../components/DashboardLayout";
 
 export default function Students() {
+  const students = [
+    {
+      id: 1,
+      name: "Juan Pérez",
+      email: "juan@gmail.com",
+      matricula: "A001",
+    },
+    {
+      id: 2,
+      name: "Ana López",
+      email: "ana@gmail.com",
+      matricula: "A002",
+    },
+  ];
+
   return (
     <DashboardLayout>
       <h1 className="text-3xl font-bold mb-6">
-        Alumnos
+        Alumnos Registrados
       </h1>
 
-      <div className="bg-white rounded-lg shadow p-4">
+      <div className="bg-white rounded-lg shadow overflow-hidden">
         <table className="w-full">
-          <thead>
+
+          <thead className="bg-slate-800 text-white">
             <tr>
-              <th className="text-left p-2">Matrícula</th>
-              <th className="text-left p-2">Nombre</th>
-              <th className="text-left p-2">Correo</th>
-              <th className="text-left p-2">Estado</th>
+              <th className="p-3">Matrícula</th>
+              <th className="p-3">Nombre</th>
+              <th className="p-3">Correo</th>
             </tr>
           </thead>
 
           <tbody>
-            <tr>
-              <td className="p-2">2025001</td>
-              <td className="p-2">Juan Pérez</td>
-              <td className="p-2">juan@escuela.com</td>
-              <td className="p-2">Activo</td>
-            </tr>
+            {students.map((student) => (
+              <tr
+                key={student.id}
+                className="border-b"
+              >
+                <td className="p-3">
+                  {student.matricula}
+                </td>
+
+                <td className="p-3">
+                  {student.name}
+                </td>
+
+                <td className="p-3">
+                  {student.email}
+                </td>
+              </tr>
+            ))}
           </tbody>
+
         </table>
       </div>
     </DashboardLayout>
