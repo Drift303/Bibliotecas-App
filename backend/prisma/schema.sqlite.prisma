@@ -1,15 +1,9 @@
-// ============================================================
-// SCHEMA PRISMA — SQLite Fallback (modo localhost / sin internet)
-// Autor: Diana (Database Architect)
-// Uso: Para instalaciones locales con Docker en la escuela.
-//      Mismo schema que PostgreSQL, adaptado para SQLite.
-//
 // DIFERENCIAS con schema.prisma (PostgreSQL):
 //   1. provider cambia a "sqlite"
 //   2. DATABASE_URL apunta a un archivo local (.db)
 //   3. Los ENUMs se reemplazan por String (SQLite no soporta enums)
 //   4. Json se reemplaza por String (se guarda como JSON serializado)
-// ============================================================
+
 
 generator client {
   provider        = "prisma-client-js"
@@ -21,10 +15,9 @@ datasource db {
   url      = env("DATABASE_URL_SQLITE")
 }
 
-// ============================================================
 // MODELOS — idénticos al schema principal
 // Enums reemplazados por String con comentarios de valores válidos
-// ============================================================
+
 
 model Tenant {
   id              String    @id @default(uuid())
