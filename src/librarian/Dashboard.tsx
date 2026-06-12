@@ -1,6 +1,15 @@
 import DashboardLayout from "../components/DashboardLayout";
 
 export default function Dashboard() {
+
+  // Luego estos datos vendrán del backend
+  const stats = {
+    books: 250,
+    loans: 34,
+    students: 120,
+    schools: 5,
+  };
+
   return (
     <DashboardLayout>
       <h1 className="text-3xl font-bold mb-6">
@@ -15,7 +24,7 @@ export default function Dashboard() {
           </h2>
 
           <p className="text-3xl font-bold">
-            250
+            {stats.books}
           </p>
         </div>
 
@@ -25,7 +34,7 @@ export default function Dashboard() {
           </h2>
 
           <p className="text-3xl font-bold">
-            34
+            {stats.loans}
           </p>
         </div>
 
@@ -35,7 +44,7 @@ export default function Dashboard() {
           </h2>
 
           <p className="text-3xl font-bold">
-            120
+            {stats.students}
           </p>
         </div>
 
@@ -45,7 +54,7 @@ export default function Dashboard() {
           </h2>
 
           <p className="text-3xl font-bold">
-            5
+            {stats.schools}
           </p>
         </div>
 

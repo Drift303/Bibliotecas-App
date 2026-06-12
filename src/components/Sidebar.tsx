@@ -4,7 +4,7 @@ export default function Sidebar() {
   return (
     <aside className="w-64 bg-slate-800 text-white min-h-screen">
       <div className="p-4 text-xl font-bold">
-        Biblioteka
+        Biblioteca
       </div>
 
       <nav className="flex flex-col p-4 gap-3">
@@ -15,16 +15,14 @@ export default function Sidebar() {
         </Link>
 
         <Link to="/quick-loan">
-          Préstamo Rápido
+          Préstamos
         </Link>
 
         <Link to="/students">
           Alumnos
         </Link>
 
-        <Link to="/statistics">
-          Estadísticas
-        </Link>
+
       </nav>
     </aside>
   );
