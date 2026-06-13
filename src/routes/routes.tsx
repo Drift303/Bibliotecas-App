@@ -2,6 +2,7 @@ import { BrowserRouter, Route, Routes } from "react-router-dom";
 
 import Dashboard from "../librarian/Dashboard";
 import Inventory from "../librarian/Inventory";
+import Loans from "../librarian/Loans";
 import QuickLoan from "../librarian/QuickLoan";
 import Students from "../librarian/Students";
 import Login from "../pages/Login";
@@ -24,6 +25,7 @@ export default function AppRoutes() {
         <Route path="/catalog" element={<Catalog />} />
         <Route path="/schools" element={<Schools />} />
         <Route path="/billing" element={<Billing />} />
+        <Route path="/loans" element={<Loans />} />
       </Routes>
     </BrowserRouter>
   );

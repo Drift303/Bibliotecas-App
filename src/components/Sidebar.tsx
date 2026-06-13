@@ -21,6 +21,9 @@ export default function Sidebar() {
         <Link to="/students">
           Alumnos
         </Link>
+        <Link to="/loans">
+          Historial de Préstamos
+        </Link>
 
 
       </nav>
