@@ -1,0 +1,161 @@
+// DIFERENCIAS con schema.prisma (PostgreSQL):
+//   1. provider cambia a "sqlite"
+//   2. DATABASE_URL apunta a un archivo local (.db)
+//   3. Los ENUMs se reemplazan por String (SQLite no soporta enums)
+//   4. Json se reemplaza por String (se guarda como JSON serializado)
+
+
+generator client {
+  provider        = "prisma-client-js"
+  output          = "../node_modules/.prisma/client-sqlite"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL_SQLITE")
+}
+
+// MODELOS — idénticos al schema principal
+// Enums reemplazados por String con comentarios de valores válidos
+
+
+model Tenant {
+  id              String    @id @default(uuid())
+  name            String
+  emailDomain     String?   @unique
+  schoolCode      String?   @unique
+  // TenantStatus: "ACTIVE" | "SUSPENDED" | "DEMO"
+  status          String    @default("ACTIVE")
+  // TenantPlan: "MONTHLY" | "ANNUAL"
+  plan            String    @default("MONTHLY")
+  billingCutDate  DateTime?
+  logoUrl         String?
+  loanLimitDays   Int       @default(7)
+  finePerDay      Float     @default(5.0)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  users           User[]
+  books           Book[]
+  loans           Loan[]
+  syncQueue       SyncQueue[]
+
+  @@map("tenants")
+}
+
+model User {
+  id             String    @id @default(uuid())
+  tenantId       String
+  name           String
+  email          String
+  // UserRole: "STUDENT" | "LIBRARIAN" | "SCHOOL_ADMIN" | "SUPER_ADMIN"
+  role           String    @default("STUDENT")
+  matricula      String?
+  barcodeId      String?   @unique
+  department     String?
+  passwordHash   String?
+  isActive       Boolean   @default(true)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  tenant         Tenant    @relation(fields: [tenantId], references: [id])
+  loans          Loan[]    @relation("StudentLoans")
+  processedLoans Loan[]    @relation("LibrarianLoans")
+  fines          Fine[]
+
+  @@unique([tenantId, email])
+  @@unique([tenantId, matricula])
+  @@map("users")
+}
+
+model Book {
+  id          String    @id @default(uuid())
+  tenantId    String
+  title       String
+  author      String
+  isbn        String?
+  category    String?
+  publisher   String?
+  year        Int?
+  // BookStatus: "AVAILABLE" | "LOANED" | "RETIRED"
+  status      String    @default("AVAILABLE")
+  // BookCondition: "NEW" | "EXCELLENT" | "REGULAR" | "DAMAGED"
+  condition   String    @default("NEW")
+  aisle       String?
+  shelf       String?
+  position    String?
+  coverUrl    String?
+  isDeleted   Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  tenant      Tenant    @relation(fields: [tenantId], references: [id])
+  loans       Loan[]
+
+  @@map("books")
+}
+
+model Loan {
+  id                String    @id @default(uuid())
+  tenantId          String
+  bookId            String
+  studentId         String
+  librarianId       String?
+  // LoanStatus: "ACTIVE" | "RETURNED" | "OVERDUE"
+  status            String    @default("ACTIVE")
+  loanDate          DateTime  @default(now())
+  dueDate           DateTime
+  returnDate        DateTime?
+  // BookCondition al devolver: "NEW" | "EXCELLENT" | "REGULAR" | "DAMAGED"
+  conditionOnReturn String?
+  notes             String?
+  fromSync          Boolean   @default(false)
+  syncQueueId       String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  tenant            Tenant    @relation(fields: [tenantId], references: [id])
+  book              Book      @relation(fields: [bookId], references: [id])
+  student           User      @relation("StudentLoans", fields: [studentId], references: [id])
+  librarian         User?     @relation("LibrarianLoans", fields: [librarianId], references: [id])
+  fine              Fine?
+
+  @@map("loans")
+}
+
+model Fine {
+  id        String    @id @default(uuid())
+  tenantId  String
+  loanId    String    @unique
+  userId    String
+  amount    Float
+  daysLate  Int
+  isPaid    Boolean   @default(false)
+  paidAt    DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  loan      Loan      @relation(fields: [loanId], references: [id])
+  user      User      @relation(fields: [userId], references: [id])
+
+  @@map("fines")
+}
+
+model SyncQueue {
+  id          String    @id @default(uuid())
+  tenantId    String
+  // SyncOperation: "CREATE_LOAN" | "RETURN_LOAN" | "RETIRE_BOOK"
+  operation   String
+  // payload guardado como JSON serializado (String en SQLite)
+  payload     String
+  // SyncStatus: "PENDING" | "SYNCED" | "FAILED"
+  status      String    @default("PENDING")
+  errorMsg    String?
+  clientTime  DateTime
+  processedAt DateTime?
+  createdAt   DateTime  @default(now())
+
+  tenant      Tenant    @relation(fields: [tenantId], references: [id])
+
+  @@map("sync_queue")
+}
