@@ -1,8 +1,6 @@
 import DashboardLayout from "../components/DashboardLayout";
 
 export default function Dashboard() {
-
-  // Luego vendrá del backend
   const stats = {
     books: 250,
     activeLoans: 34,
@@ -33,106 +31,286 @@ export default function Dashboard() {
 
   return (
     <DashboardLayout>
+      <div className="bg-[#F8F9FB] min-h-screen">
 
-      <h1 className="text-3xl font-bold mb-6">
-        Dashboard
-      </h1>
+        {/* Encabezado */}
+        <div className="mb-8">
+          <h1 className="text-4xl font-bold text-[#0F172A]">
+            Dashboard
+          </h1>
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-
-        <div className="bg-white p-6 rounded-lg shadow">
-          <h2 className="text-gray-500">
-            Libros
-          </h2>
-
-          <p className="text-3xl font-bold">
-            {stats.books}
+          <p className="text-[#6B7280] mt-2">
+            Resumen general del sistema bibliotecario.
           </p>
         </div>
 
-        <div className="bg-white p-6 rounded-lg shadow">
-          <h2 className="text-gray-500">
-            Préstamos Activos
-          </h2>
+        {/* Tarjetas */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
 
-          <p className="text-3xl font-bold">
-            {stats.activeLoans}
-          </p>
-        </div>
+          {/* Libros */}
+          <div
+            className="
+            bg-white
+            rounded-2xl
+            p-6
+            border
+            border-[#E5E7EB]
+            shadow-sm
+            transition-all
+            duration-300
+            hover:-translate-y-1
+            hover:shadow-lg
+            cursor-pointer
+          "
+          >
+            <div className="flex justify-between items-center">
+              <div>
+                <p className="text-[#6B7280] text-sm">
+                  Total de Libros
+                </p>
 
-        <div className="bg-white p-6 rounded-lg shadow">
-          <h2 className="text-gray-500">
-            Alumnos
-          </h2>
+                <h2 className="text-4xl font-bold text-[#1E3A5F] mt-2">
+                  {stats.books}
+                </h2>
+              </div>
 
-          <p className="text-3xl font-bold">
-            {stats.students}
-          </p>
-        </div>
-
-        <div className="bg-white p-6 rounded-lg shadow">
-          <h2 className="text-gray-500">
-            Multas Pendientes
-          </h2>
-
-          <p className="text-3xl font-bold text-red-600">
-            ${stats.pendingFines}
-          </p>
-        </div>
-
-      </div>
-
-      <div className="mt-8 bg-white rounded-lg shadow p-6">
-
-        <h2 className="text-xl font-semibold mb-4">
-          Actividad Reciente
-        </h2>
-
-        <table className="w-full">
-
-          <thead className="border-b">
-            <tr>
-              <th className="text-left p-2">
-                Alumno
-              </th>
-
-              <th className="text-left p-2">
-                Libro
-              </th>
-
-              <th className="text-left p-2">
-                Estado
-              </th>
-            </tr>
-          </thead>
-
-          <tbody>
-
-            {recentLoans.map((loan) => (
-              <tr
-                key={loan.id}
-                className="border-b"
+              <div
+                className="
+                w-14
+                h-14
+                rounded-xl
+                bg-blue-100
+                flex
+                items-center
+                justify-center
+                text-2xl
+              "
               >
-                <td className="p-2">
-                  {loan.student}
-                </td>
+                📚
+              </div>
+            </div>
+          </div>
 
-                <td className="p-2">
-                  {loan.book}
-                </td>
+          {/* Préstamos */}
+          <div
+            className="
+            bg-white
+            rounded-2xl
+            p-6
+            border
+            border-[#E5E7EB]
+            shadow-sm
+            transition-all
+            duration-300
+            hover:-translate-y-1
+            hover:shadow-lg
+            cursor-pointer
+          "
+          >
+            <div className="flex justify-between items-center">
+              <div>
+                <p className="text-[#6B7280] text-sm">
+                  Préstamos Activos
+                </p>
 
-                <td className="p-2">
-                  {loan.status}
-                </td>
+                <h2 className="text-4xl font-bold text-[#22C55E] mt-2">
+                  {stats.activeLoans}
+                </h2>
+              </div>
+
+              <div
+                className="
+                w-14
+                h-14
+                rounded-xl
+                bg-green-100
+                flex
+                items-center
+                justify-center
+                text-2xl
+              "
+              >
+                🔄
+              </div>
+            </div>
+          </div>
+
+          {/* Alumnos */}
+          <div
+            className="
+            bg-white
+            rounded-2xl
+            p-6
+            border
+            border-[#E5E7EB]
+            shadow-sm
+            transition-all
+            duration-300
+            hover:-translate-y-1
+            hover:shadow-lg
+            cursor-pointer
+          "
+          >
+            <div className="flex justify-between items-center">
+              <div>
+                <p className="text-[#6B7280] text-sm">
+                  Alumnos Registrados
+                </p>
+
+                <h2 className="text-4xl font-bold text-[#3B82F6] mt-2">
+                  {stats.students}
+                </h2>
+              </div>
+
+              <div
+                className="
+                w-14
+                h-14
+                rounded-xl
+                bg-blue-100
+                flex
+                items-center
+                justify-center
+                text-2xl
+              "
+              >
+                👨‍🎓
+              </div>
+            </div>
+          </div>
+
+          {/* Multas */}
+          <div
+            className="
+            bg-white
+            rounded-2xl
+            p-6
+            border
+            border-[#E5E7EB]
+            shadow-sm
+            transition-all
+            duration-300
+            hover:-translate-y-1
+            hover:shadow-lg
+            cursor-pointer
+          "
+          >
+            <div className="flex justify-between items-center">
+              <div>
+                <p className="text-[#6B7280] text-sm">
+                  Multas Pendientes
+                </p>
+
+                <h2 className="text-4xl font-bold text-[#D4A017] mt-2">
+                  ${stats.pendingFines}
+                </h2>
+              </div>
+
+              <div
+                className="
+                w-14
+                h-14
+                rounded-xl
+                bg-yellow-100
+                flex
+                items-center
+                justify-center
+                text-2xl
+              "
+              >
+                💰
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Tabla */}
+        <div
+          className="
+          mt-8
+          bg-white
+          rounded-2xl
+          border
+          border-[#E5E7EB]
+          shadow-sm
+          overflow-hidden
+        "
+        >
+          <div className="p-5 border-b border-[#E5E7EB]">
+            <h2 className="text-xl font-semibold text-[#1E3A5F]">
+              Actividad Reciente
+            </h2>
+          </div>
+
+          <table className="w-full">
+
+            <thead className="bg-[#F8F9FB]">
+              <tr>
+                <th className="text-left p-4 text-[#475569]">
+                  Alumno
+                </th>
+
+                <th className="text-left p-4 text-[#475569]">
+                  Libro
+                </th>
+
+                <th className="text-left p-4 text-[#475569]">
+                  Estado
+                </th>
               </tr>
-            ))}
+            </thead>
 
-          </tbody>
+            <tbody>
 
-        </table>
+              {recentLoans.map((loan) => (
+                <tr
+                  key={loan.id}
+                  className="
+                    border-t
+                    border-[#E5E7EB]
+                    hover:bg-[#F8F9FB]
+                    transition-colors
+                    duration-200
+                  "
+                >
+                  <td className="p-4">
+                    {loan.student}
+                  </td>
+
+                  <td className="p-4">
+                    {loan.book}
+                  </td>
+
+                  <td className="p-4">
+
+                    {loan.status === "Prestado" && (
+                      <span className="bg-yellow-100 text-yellow-700 px-3 py-1 rounded-full text-sm font-medium">
+                        Prestado
+                      </span>
+                    )}
+
+                    {loan.status === "Devuelto" && (
+                      <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-sm font-medium">
+                        Devuelto
+                      </span>
+                    )}
+
+                    {loan.status === "Vencido" && (
+                      <span className="bg-red-100 text-red-600 px-3 py-1 rounded-full text-sm font-medium">
+                        Vencido
+                      </span>
+                    )}
+
+                  </td>
+                </tr>
+              ))}
+
+            </tbody>
+
+          </table>
+        </div>
 
       </div>
-
     </DashboardLayout>
   );
 }
