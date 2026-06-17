@@ -145,20 +145,35 @@ export default function Students() {
 
   return (
     <DashboardLayout>
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-bold">
+
+      <div className="flex justify-between items-center mb-8">
+
+        <h1 className="text-4xl font-bold text-[#1E3A5F]">
           Alumnos Registrados
         </h1>
 
         <button
           onClick={handleNewStudent}
-          className="bg-blue-700 text-white px-4 py-2 rounded hover:bg-blue-800"
+          className="
+            bg-[#1E3A5F]
+            text-white
+            px-5
+            py-3
+            rounded-xl
+            transition-all
+            duration-300
+            hover:bg-[#3B82F6]
+            hover:shadow-lg
+            hover:-translate-y-1
+          "
         >
           + Nuevo Alumno
         </button>
+
       </div>
 
-      <div className="mb-4">
+      <div className="mb-6">
+
         <input
           type="text"
           placeholder="Buscar alumno..."
@@ -166,13 +181,35 @@ export default function Students() {
           onChange={(e) =>
             setSearch(e.target.value)
           }
-          className="w-full border rounded p-2"
+          className="
+            w-full
+            border
+            border-[#E5E7EB]
+            rounded-xl
+            p-3
+            shadow-sm
+            focus:outline-none
+            focus:ring-2
+            focus:ring-[#3B82F6]
+          "
         />
+
       </div>
 
       {showForm && (
-        <div className="bg-white p-6 rounded-lg shadow mb-6">
-          <h2 className="text-xl font-semibold mb-4">
+        <div
+          className="
+            bg-white
+            p-6
+            rounded-2xl
+            shadow-sm
+            border
+            border-[#E5E7EB]
+            mb-6
+          "
+        >
+
+          <h2 className="text-xl font-semibold mb-4 text-[#1E3A5F]">
             {editingStudentId
               ? "Editar Alumno"
               : "Nuevo Alumno"}
@@ -191,7 +228,15 @@ export default function Students() {
                     e.target.value,
                 })
               }
-              className="border p-2 rounded"
+              className="
+                border
+                border-[#E5E7EB]
+                p-3
+                rounded-xl
+                focus:outline-none
+                focus:ring-2
+                focus:ring-[#3B82F6]
+              "
             />
 
             <input
@@ -204,7 +249,15 @@ export default function Students() {
                   name: e.target.value,
                 })
               }
-              className="border p-2 rounded"
+              className="
+                border
+                border-[#E5E7EB]
+                p-3
+                rounded-xl
+                focus:outline-none
+                focus:ring-2
+                focus:ring-[#3B82F6]
+              "
             />
 
             <input
@@ -217,7 +270,15 @@ export default function Students() {
                   email: e.target.value,
                 })
               }
-              className="border p-2 rounded"
+              className="
+                border
+                border-[#E5E7EB]
+                p-3
+                rounded-xl
+                focus:outline-none
+                focus:ring-2
+                focus:ring-[#3B82F6]
+              "
             />
 
             <select
@@ -229,7 +290,15 @@ export default function Students() {
                     e.target.value,
                 })
               }
-              className="border p-2 rounded"
+              className="
+                border
+                border-[#E5E7EB]
+                p-3
+                rounded-xl
+                focus:outline-none
+                focus:ring-2
+                focus:ring-[#3B82F6]
+              "
             >
               <option>Activo</option>
               <option>Inactivo</option>
@@ -243,7 +312,17 @@ export default function Students() {
               onClick={
                 handleSaveStudent
               }
-              className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"
+              className="
+                bg-green-600
+                text-white
+                px-5
+                py-2
+                rounded-xl
+                transition-all
+                duration-300
+                hover:shadow-md
+                hover:-translate-y-1
+              "
             >
               Guardar
             </button>
@@ -252,19 +331,40 @@ export default function Students() {
               onClick={() =>
                 setShowForm(false)
               }
-              className="bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600"
+              className="
+                bg-gray-500
+                text-white
+                px-5
+                py-2
+                rounded-xl
+                transition-all
+                duration-300
+                hover:shadow-md
+                hover:-translate-y-1
+              "
             >
               Cancelar
             </button>
 
           </div>
+
         </div>
       )}
 
-      <div className="bg-white rounded-lg shadow overflow-hidden">
+      <div
+        className="
+          bg-white
+          rounded-2xl
+          shadow-sm
+          border
+          border-[#E5E7EB]
+          overflow-hidden
+        "
+      >
+
         <table className="w-full">
 
-          <thead className="bg-slate-800 text-white">
+          <thead className="bg-[#1E3A5F] text-white">
             <tr>
               <th className="p-3 text-left">
                 Matrícula
@@ -289,16 +389,20 @@ export default function Students() {
           </thead>
 
           <tbody>
+
             {filteredStudents.map(
               (student) => (
                 <tr
                   key={student.id}
-                  className="border-b hover:bg-slate-50"
+                  className="
+                    border-b
+                    hover:bg-[#F8F9FB]
+                    transition-colors
+                    duration-200
+                  "
                 >
                   <td className="p-3">
-                    {
-                      student.matricula
-                    }
+                    {student.matricula}
                   </td>
 
                   <td className="p-3">
@@ -311,16 +415,14 @@ export default function Students() {
 
                   <td className="p-3">
                     <span
-                      className={`px-2 py-1 rounded text-sm ${
+                      className={`px-3 py-1 rounded-full text-sm font-medium ${
                         student.status ===
                         "Activo"
                           ? "bg-green-100 text-green-700"
                           : "bg-red-100 text-red-700"
                       }`}
                     >
-                      {
-                        student.status
-                      }
+                      {student.status}
                     </span>
                   </td>
 
@@ -332,7 +434,17 @@ export default function Students() {
                           student.id
                         )
                       }
-                      className="bg-yellow-500 text-white px-3 py-1 rounded hover:bg-yellow-600"
+                      className="
+                        bg-[#D4A017]
+                        text-white
+                        px-3
+                        py-1
+                        rounded-lg
+                        transition-all
+                        duration-300
+                        hover:shadow-md
+                        hover:-translate-y-1
+                      "
                     >
                       Editar
                     </button>
@@ -343,7 +455,17 @@ export default function Students() {
                           student.id
                         )
                       }
-                      className="bg-red-600 text-white px-3 py-1 rounded hover:bg-red-700"
+                      className="
+                        bg-red-600
+                        text-white
+                        px-3
+                        py-1
+                        rounded-lg
+                        transition-all
+                        duration-300
+                        hover:shadow-md
+                        hover:-translate-y-1
+                      "
                     >
                       Eliminar
                     </button>
@@ -352,10 +474,13 @@ export default function Students() {
                 </tr>
               )
             )}
+
           </tbody>
 
         </table>
+
       </div>
+
     </DashboardLayout>
   );
 }
