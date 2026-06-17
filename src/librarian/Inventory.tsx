@@ -128,40 +128,67 @@ export default function Inventory() {
 
   return (
     <DashboardLayout>
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-bold">
+      <div className="flex justify-between items-center mb-8">
+        <h1 className="text-4xl font-bold text-[#1E3A5F]">
           Inventario de Libros
         </h1>
 
         <button
           onClick={handleAddBook}
-          className="bg-blue-700 text-white px-4 py-2 rounded hover:bg-blue-800"
+          className="
+            bg-[#1E3A5F]
+            text-white
+            px-5
+            py-3
+            rounded-xl
+            transition-all
+            duration-300
+            hover:bg-[#3B82F6]
+            hover:shadow-lg
+            hover:-translate-y-1
+          "
         >
           + Nuevo Libro
         </button>
       </div>
 
-      <div className="mb-4">
+      <div className="mb-6">
         <input
           type="text"
           placeholder="Buscar libro..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="w-full border rounded p-2"
+          className="
+            w-full
+            border
+            border-[#E5E7EB]
+            rounded-xl
+            p-3
+            shadow-sm
+            focus:outline-none
+            focus:ring-2
+            focus:ring-[#3B82F6]
+          "
         />
       </div>
 
       {showForm && (
-        <div className="bg-white p-6 rounded-lg shadow mb-6">
-
-          <h2 className="text-xl font-semibold mb-4">
-            {editingBookId
-              ? "Editar Libro"
-              : "Nuevo Libro"}
+        <div
+          className="
+            bg-white
+            p-6
+            rounded-2xl
+            shadow-sm
+            border
+            border-[#E5E7EB]
+            mb-6
+          "
+        >
+          <h2 className="text-xl font-semibold mb-4 text-[#1E3A5F]">
+            {editingBookId ? "Editar Libro" : "Nuevo Libro"}
           </h2>
 
           <div className="grid md:grid-cols-2 gap-4">
-
             <input
               type="text"
               placeholder="ISBN"
@@ -172,7 +199,15 @@ export default function Inventory() {
                   isbn: e.target.value,
                 })
               }
-              className="border p-2 rounded"
+              className="
+                border
+                border-[#E5E7EB]
+                p-3
+                rounded-xl
+                focus:outline-none
+                focus:ring-2
+                focus:ring-[#3B82F6]
+              "
             />
 
             <input
@@ -185,7 +220,15 @@ export default function Inventory() {
                   title: e.target.value,
                 })
               }
-              className="border p-2 rounded"
+              className="
+                border
+                border-[#E5E7EB]
+                p-3
+                rounded-xl
+                focus:outline-none
+                focus:ring-2
+                focus:ring-[#3B82F6]
+              "
             />
 
             <input
@@ -198,7 +241,15 @@ export default function Inventory() {
                   author: e.target.value,
                 })
               }
-              className="border p-2 rounded"
+              className="
+                border
+                border-[#E5E7EB]
+                p-3
+                rounded-xl
+                focus:outline-none
+                focus:ring-2
+                focus:ring-[#3B82F6]
+              "
             />
 
             <select
@@ -209,46 +260,77 @@ export default function Inventory() {
                   status: e.target.value,
                 })
               }
-              className="border p-2 rounded"
+              className="
+                border
+                border-[#E5E7EB]
+                p-3
+                rounded-xl
+                focus:outline-none
+                focus:ring-2
+                focus:ring-[#3B82F6]
+              "
             >
               <option>Disponible</option>
               <option>Prestado</option>
             </select>
-
           </div>
 
           <div className="flex gap-3 mt-4">
-
             <button
               onClick={handleSaveBook}
-              className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"
+              className="
+                bg-green-600
+                text-white
+                px-5
+                py-2
+                rounded-xl
+                transition-all
+                duration-300
+                hover:shadow-md
+                hover:-translate-y-1
+              "
             >
               Guardar
             </button>
 
             <button
               onClick={() => setShowForm(false)}
-              className="bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600"
+              className="
+                bg-gray-500
+                text-white
+                px-5
+                py-2
+                rounded-xl
+                transition-all
+                duration-300
+                hover:shadow-md
+                hover:-translate-y-1
+              "
             >
               Cancelar
             </button>
-
           </div>
         </div>
       )}
 
-      <div className="bg-white rounded-lg shadow overflow-hidden">
+      <div
+        className="
+          bg-white
+          rounded-2xl
+          shadow-sm
+          border
+          border-[#E5E7EB]
+          overflow-hidden
+        "
+      >
         <table className="w-full">
-
-          <thead className="bg-slate-800 text-white">
+          <thead className="bg-[#1E3A5F] text-white">
             <tr>
               <th className="p-3 text-left">ISBN</th>
               <th className="p-3 text-left">Título</th>
               <th className="p-3 text-left">Autor</th>
               <th className="p-3 text-left">Estado</th>
-              <th className="p-3 text-center">
-                Acciones
-              </th>
+              <th className="p-3 text-center">Acciones</th>
             </tr>
           </thead>
 
@@ -256,26 +338,25 @@ export default function Inventory() {
             {filteredBooks.map((book) => (
               <tr
                 key={book.id}
-                className="border-b hover:bg-slate-50"
+                className="
+                  border-b
+                  hover:bg-[#F8F9FB]
+                  transition-colors
+                  duration-200
+                "
               >
-                <td className="p-3">
-                  {book.isbn}
-                </td>
+                <td className="p-3">{book.isbn}</td>
 
-                <td className="p-3">
-                  {book.title}
-                </td>
+                <td className="p-3">{book.title}</td>
 
-                <td className="p-3">
-                  {book.author}
-                </td>
+                <td className="p-3">{book.author}</td>
 
                 <td className="p-3">
                   <span
-                    className={`px-2 py-1 rounded text-sm ${
+                    className={`px-3 py-1 rounded-full text-sm font-medium ${
                       book.status === "Disponible"
                         ? "bg-green-100 text-green-700"
-                        : "bg-yellow-100 text-yellow-700"
+                        : "bg-red-100 text-red-700"
                     }`}
                   >
                     {book.status}
@@ -283,30 +364,43 @@ export default function Inventory() {
                 </td>
 
                 <td className="p-3 text-center space-x-2">
-
                   <button
-                    onClick={() =>
-                      handleEdit(book.id)
-                    }
-                    className="bg-yellow-500 text-white px-3 py-1 rounded hover:bg-yellow-600"
+                    onClick={() => handleEdit(book.id)}
+                    className="
+                      bg-[#D4A017]
+                      text-white
+                      px-3
+                      py-1
+                      rounded-lg
+                      transition-all
+                      duration-300
+                      hover:shadow-md
+                      hover:-translate-y-1
+                    "
                   >
                     Editar
                   </button>
 
                   <button
-                    onClick={() =>
-                      handleDelete(book.id)
-                    }
-                    className="bg-red-600 text-white px-3 py-1 rounded hover:bg-red-700"
+                    onClick={() => handleDelete(book.id)}
+                    className="
+                      bg-red-600
+                      text-white
+                      px-3
+                      py-1
+                      rounded-lg
+                      transition-all
+                      duration-300
+                      hover:shadow-md
+                      hover:-translate-y-1
+                    "
                   >
                     Eliminar
                   </button>
-
                 </td>
               </tr>
             ))}
           </tbody>
-
         </table>
       </div>
     </DashboardLayout>
