@@ -98,23 +98,9 @@ export default function Loans() {
     if (!loan) return;
 
     alert(
-      `Alumno: ${loan.student}
-
-Libro: ${loan.book}
-
-Estado: ${loan.status}
-
-Fecha préstamo: ${loan.loanDate}
-
-Fecha límite: ${loan.dueDate}
-
-Fecha devolución: ${
+      `Alumno: ${loan.student}\n\nLibro: ${loan.book}\n\nEstado: ${loan.status}\n\nFecha préstamo: ${loan.loanDate}\n\nFecha límite: ${loan.dueDate}\n\nFecha devolución: ${
         loan.returnedDate || "Pendiente"
-      }
-
-Días de retraso: ${loan.lateDays}
-
-Multa: $${loan.fine}`
+      }\n\nDías de retraso: ${loan.lateDays}\n\nMulta: $${loan.fine}`
     );
   };
 
@@ -133,110 +119,120 @@ Multa: $${loan.fine}`
 
   return (
     <DashboardLayout>
-      <h1 className="text-3xl font-bold mb-6">
+      <h1 className="text-4xl font-bold mb-8 text-[#1E3A5F]">
         Historial de Préstamos
       </h1>
 
       <div className="grid md:grid-cols-3 gap-4 mb-6">
-
-        <div className="bg-white p-4 rounded-lg shadow">
-          <h2 className="text-gray-500">
+        <div
+          className="
+            bg-white
+            p-5
+            rounded-2xl
+            shadow-sm
+            border
+            border-[#E5E7EB]
+          "
+        >
+          <h2 className="text-sm font-medium text-gray-500 mb-1">
             Préstamos Activos
           </h2>
-
-          <p className="text-3xl font-bold">
+          <p className="text-3xl font-bold text-[#1E3A5F]">
             {activeLoans}
           </p>
         </div>
 
-        <div className="bg-white p-4 rounded-lg shadow">
-          <h2 className="text-gray-500">
+        <div
+          className="
+            bg-white
+            p-5
+            rounded-2xl
+            shadow-sm
+            border
+            border-[#E5E7EB]
+          "
+        >
+          <h2 className="text-sm font-medium text-gray-500 mb-1">
             Préstamos Vencidos
           </h2>
-
           <p className="text-3xl font-bold text-red-600">
             {expiredLoans}
           </p>
         </div>
 
-        <div className="bg-white p-4 rounded-lg shadow">
-          <h2 className="text-gray-500">
+        <div
+          className="
+            bg-white
+            p-5
+            rounded-2xl
+            shadow-sm
+            border
+            border-[#E5E7EB]
+          "
+        >
+          <h2 className="text-sm font-medium text-gray-500 mb-1">
             Multas Pendientes
           </h2>
-
-          <p className="text-3xl font-bold text-orange-600">
+          <p className="text-3xl font-bold text-[#D4A017]">
             ${totalFines}
           </p>
         </div>
-
       </div>
 
-      <div className="bg-white rounded-lg shadow overflow-hidden">
-
+      <div
+        className="
+          bg-white
+          rounded-2xl
+          shadow-sm
+          border
+          border-[#E5E7EB]
+          overflow-hidden
+        "
+      >
         <table className="w-full">
-
-          <thead className="bg-slate-800 text-white">
+          <thead className="bg-[#1E3A5F] text-white">
             <tr>
-              <th className="p-3 text-left">
-                Alumno
-              </th>
-
-              <th className="p-3 text-left">
-                Libro
-              </th>
-
-              <th className="p-3 text-left">
-                Préstamo
-              </th>
-
-              <th className="p-3 text-left">
-                Entrega
-              </th>
-
-              <th className="p-3 text-left">
-                Estado
-              </th>
-
-              <th className="p-3 text-left">
-                Retraso
-              </th>
-
-              <th className="p-3 text-left">
-                Multa
-              </th>
-
-              <th className="p-3 text-center">
-                Acciones
-              </th>
+              <th className="p-3 text-left">Alumno</th>
+              <th className="p-3 text-left">Libro</th>
+              <th className="p-3 text-left">Préstamo</th>
+              <th className="p-3 text-left">Entrega</th>
+              <th className="p-3 text-left">Estado</th>
+              <th className="p-3 text-left">Retraso</th>
+              <th className="p-3 text-left">Multa</th>
+              <th className="p-3 text-center">Acciones</th>
             </tr>
           </thead>
 
           <tbody>
-
             {loans.map((loan) => (
               <tr
                 key={loan.id}
-                className="border-b hover:bg-slate-50"
+                className="
+                  border-b
+                  hover:bg-[#F8F9FB]
+                  transition-colors
+                  duration-200
+                "
               >
-                <td className="p-3">
+                <td className="p-3 font-medium text-gray-800">
                   {loan.student}
                 </td>
 
-                <td className="p-3">
+                <td className="p-3 text-gray-600">
                   {loan.book}
                 </td>
 
-                <td className="p-3">
+                <td className="p-3 text-gray-600">
                   {loan.loanDate}
                 </td>
 
-                <td className="p-3">
+                <td className="p-3 text-gray-600">
                   {loan.dueDate}
                 </td>
 
                 <td className="p-3">
                   <span
-                    className={`px-2 py-1 rounded text-sm ${
+                    className={`px-3 py-1 rounded-full text-sm font-medium ${
                       loan.status === "Activo"
                         ? "bg-green-100 text-green-700"
                         : loan.status === "Vencido"
@@ -248,42 +244,54 @@ Multa: $${loan.fine}`
                   </span>
                 </td>
 
-                <td className="p-3">
+                <td className="p-3 text-gray-600">
                   {loan.lateDays} días
                 </td>
 
-                <td className="p-3">
+                <td className="p-3 font-medium text-gray-800">
                   ${loan.fine}
                 </td>
 
                 <td className="p-3 text-center space-x-2">
-
                   {loan.status !== "Devuelto" && (
                     <button
-                      onClick={() =>
-                        handleReturn(loan.id)
-                      }
-                      className="bg-green-600 text-white px-3 py-1 rounded hover:bg-green-700"
+                      onClick={() => handleReturn(loan.id)}
+                      className="
+                        bg-green-600
+                        text-white
+                        px-3
+                        py-1
+                        rounded-lg
+                        transition-all
+                        duration-300
+                        hover:shadow-md
+                        hover:-translate-y-1
+                      "
                     >
                       Devolver
                     </button>
                   )}
 
                   <button
-                    onClick={() =>
-                      handleView(loan.id)
-                    }
-                    className="bg-slate-600 text-white px-3 py-1 rounded hover:bg-slate-700"
+                    onClick={() => handleView(loan.id)}
+                    className="
+                      bg-gray-500
+                      text-white
+                      px-3
+                      py-1
+                      rounded-lg
+                      transition-all
+                      duration-300
+                      hover:shadow-md
+                      hover:-translate-y-1
+                    "
                   >
                     Ver
                   </button>
-
                 </td>
               </tr>
             ))}
-
           </tbody>
-
         </table>
       </div>
     </DashboardLayout>
