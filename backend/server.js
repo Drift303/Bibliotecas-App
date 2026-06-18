@@ -18,7 +18,15 @@ const app = express();
 app.use(helmet());
 app.use(express.json({ limit: '1mb' }));
 app.use(cookieParser());
-app.use(cors({ origin: process.env.CORS_ORIGIN || 'http://localhost:3000', credentials: true }));
+
+const allowedOrigins = process.env.CORS_ORIGIN 
+  ? process.env.CORS_ORIGIN.split(',') 
+  : 'http://localhost:3000';
+app.use(cors({ 
+  origin: allowedOrigins, 
+  credentials: true 
+}));
+
 
 const limiter = rateLimit({ windowMs: 60 * 1000, max: 150 });
 app.use(limiter);
