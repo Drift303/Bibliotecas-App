@@ -23,6 +23,17 @@ interface Loan {
 export default function QuickLoan() {
   const [loans, setLoans] = useState<Loan[]>([]);
 
+  const [showScannerOptions, setShowScannerOptions] =
+    useState(false);
+
+  const handleScanBarcode = () => {
+    alert("Leyendo código de barras...");
+  };
+
+  const handleScanQR = () => {
+    alert("Leyendo código QR...");
+  };
+
   const [form, setForm] = useState({
     studentId: "",
     studentName: "",
@@ -124,6 +135,7 @@ export default function QuickLoan() {
         "
       >
         <div className="grid md:grid-cols-2 gap-8">
+
           {/* Alumno */}
           <div>
             <h2 className="text-xl font-semibold mb-4 text-[#1E3A5F]">
@@ -270,13 +282,11 @@ export default function QuickLoan() {
           </div>
         </div>
 
-        {/* Información préstamo */}
         <div className="mt-8 border-t border-[#E5E7EB] pt-6">
           <h2 className="text-xl font-semibold mb-4 text-[#1E3A5F]">
             Información del Préstamo
           </h2>
-
-          <div className="grid md:grid-cols-2 gap-4">
+                    <div className="grid md:grid-cols-2 gap-4">
             <div>
               <label className="block mb-1 text-sm font-medium text-gray-600">
                 Fecha de préstamo
@@ -367,27 +377,103 @@ export default function QuickLoan() {
           />
         </div>
 
-        <button
-          onClick={handleSubmit}
-          className="
-            mt-6
-            bg-[#1E3A5F]
-            text-white
-            px-6
-            py-3
-            rounded-xl
-            transition-all
-            duration-300
-            hover:bg-[#3B82F6]
-            hover:shadow-lg
-            hover:-translate-y-1
-          "
-        >
-          Registrar Préstamo
-        </button>
+        <div className="flex flex-wrap gap-4 mt-6">
+
+          <button
+            onClick={handleSubmit}
+            className="
+              bg-[#1E3A5F]
+              text-white
+              px-6
+              py-3
+              rounded-xl
+              transition-all
+              duration-300
+              hover:bg-[#3B82F6]
+              hover:shadow-lg
+              hover:-translate-y-1
+            "
+          >
+            Registrar Préstamo
+          </button>
+
+          <div className="relative">
+
+            <button
+              onClick={() =>
+                setShowScannerOptions(
+                  !showScannerOptions
+                )
+              }
+              className="
+                bg-[#3B82F6]
+                text-white
+                px-6
+                py-3
+                rounded-xl
+                transition-all
+                duration-300
+                hover:shadow-lg
+                hover:-translate-y-1
+              "
+            >
+              Escanear Libro
+            </button>
+
+            {showScannerOptions && (
+              <div
+                className="
+                  absolute
+                  left-0
+                  mt-2
+                  w-60
+                  bg-white
+                  rounded-xl
+                  shadow-xl
+                  border
+                  border-[#E5E7EB]
+                  overflow-hidden
+                  z-10
+                "
+              >
+                <button
+                  onClick={handleScanBarcode}
+                  className="
+                    w-full
+                    text-left
+                    px-4
+                    py-3
+                    hover:bg-[#F8F9FB]
+                    transition-colors
+                  "
+                >
+                  📊 Escanear código de barras
+                </button>
+
+                <button
+                  onClick={handleScanQR}
+                  className="
+                    w-full
+                    text-left
+                    px-4
+                    py-3
+                    hover:bg-[#F8F9FB]
+                    transition-colors
+                    border-t
+                    border-[#E5E7EB]
+                  "
+                >
+                  🔳 Escanear código QR
+                </button>
+              </div>
+            )}
+
+          </div>
+
+        </div>
+
       </div>
 
-      {/* Tabla de préstamos */}
       <div
         className="
           bg-white
@@ -428,15 +514,25 @@ export default function QuickLoan() {
                   duration-200
                 "
               >
-                <td className="p-3">{loan.studentName}</td>
+                <td className="p-3">
+                  {loan.studentName}
+                </td>
 
-                <td className="p-3">{loan.title}</td>
+                <td className="p-3">
+                  {loan.title}
+                </td>
 
-                <td className="p-3">{loan.loanDate}</td>
+                <td className="p-3">
+                  {loan.loanDate}
+                </td>
 
-                <td className="p-3">{loan.dueDate}</td>
+                <td className="p-3">
+                  {loan.dueDate}
+                </td>
 
-                <td className="p-3">${loan.finePerDay}</td>
+                <td className="p-3">
+                  ${loan.finePerDay}
+                </td>
 
                 <td className="p-3">
                   <span
@@ -466,9 +562,11 @@ export default function QuickLoan() {
                 </td>
               </tr>
             )}
+
           </tbody>
         </table>
       </div>
+
     </DashboardLayout>
   );
 }
