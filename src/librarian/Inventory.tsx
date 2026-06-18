@@ -267,6 +267,14 @@ export default function Inventory() {
             </select>
           </div>
 
+          {/* PRÓXIMAMENTE: CÓDIGO DE BARRAS */}
+          <div className="mt-6 p-3 bg-yellow-50 rounded-lg border border-yellow-200">
+            <p className="text-sm text-yellow-700 font-medium">Próximamente: Código de Barras</p>
+          </div>
+          <button className="w-full mt-2 border border-yellow-300 text-yellow-700 px-4 py-2 rounded-lg transition-colors hover:bg-yellow-50 font-medium">
+            escaneo 
+          </button>
+
           <div className="flex gap-3 mt-4">
             <button
               onClick={handleSaveBook}
