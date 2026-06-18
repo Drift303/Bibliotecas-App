@@ -1,24 +1,67 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import api from "../api";
 import BookCard from "../cards/BookCard";
+
+interface Book {
+  id: string | number;
+  isbn: string;
+  title: string;
+  author: string;
+  status: string; // "Disponible" o "Prestado"
+}
 
 export default function Catalog() {
   const [searchText, setSearchText] = useState("");
+  const [books, setBooks] = useState<Book[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [statusMessage, setStatusMessage] = useState("");
+  const [statusType, setStatusType] = useState<"ok" | "error" | "info">("info");
 
-  const books = [
-    {
-      id: 1,
-      title: "Clean Code",
-      author: "Robert C. Martin",
-      status: "Disponible"
-    },
-    {
-      id: 2,
-      title: "React Básico",
-      author: "Juan Pérez",
-      status: "Prestado"
-    }
-  ];
+  // --- EFECTO DE CARGA DESDE EL BACKEND ---
+  useEffect(() => {
+    const loadBooks = async () => {
+      setLoading(true);
+      try {
+        const res = await api.get("/books");
 
+        // Desestructuración tolerante al formato de respuesta del backend
+        const rawBooks = res.data?.success ? res.data.data : (res.data || []);
+
+        const normalizedBooks = (Array.isArray(rawBooks) ? rawBooks : []).map((b: any) => ({
+          id: b.id,
+          isbn: b.isbn || "S/N",
+          title: b.title,
+          author: b.author,
+          status:
+            b.available === true || b.status === "AVAILABLE" || b.statusLogical === "ACTIVE"
+              ? "Disponible"
+              : "Prestado",
+        }));
+
+        setBooks(normalizedBooks);
+        setStatusType("ok");
+        setStatusMessage(
+          normalizedBooks.length > 0
+            ? "Datos sincronizados desde el servidor."
+            : "Conectado al servidor. No hay libros disponibles todavía."
+        );
+      } catch (err: any) {
+        setBooks([]);
+        setStatusType("error");
+        const detail = err?.response?.status
+          ? `Error ${err.response.status} al contactar el servidor.`
+          : "No se pudo conectar con el servidor (revisa tu conexión).";
+        setStatusMessage(detail);
+        console.error("Error cargando libros:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadBooks();
+  }, []);
+
+  // --- BÚSQUEDA Y FILTRADO ---
   const filteredBooks = useMemo(() => {
     const query = searchText.trim().toLowerCase();
     if (!query) {
@@ -28,7 +71,8 @@ export default function Catalog() {
     return books.filter((book) => {
       return (
         book.title.toLowerCase().includes(query) ||
-        book.author.toLowerCase().includes(query)
+        book.author.toLowerCase().includes(query) ||
+        book.isbn.includes(query)
       );
     });
   }, [books, searchText]);
@@ -37,11 +81,24 @@ export default function Catalog() {
     <div className="p-6">
       <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-slate-900 mb-2">
+          <h1 className="text-3xl font-bold text-[#1E3A5F] mb-2">
             Catálogo de Libros
           </h1>
-          <p className="text-sm text-slate-600 max-w-2xl">
-            Explora la biblioteca, encuentra libros por título o autor, y visualiza su estado al instante.
+          {statusMessage && (
+            <p
+              className={`text-sm font-medium ${
+                statusType === "error"
+                  ? "text-red-600"
+                  : statusType === "ok"
+                  ? "text-green-600"
+                  : "text-blue-600"
+              }`}
+            >
+              {statusMessage}
+            </p>
+          )}
+          <p className="text-sm text-slate-600 max-w-2xl mt-2">
+            Explora la biblioteca, encuentra libros por título, autor o ISBN, y visualiza su estado al instante.
           </p>
         </div>
 
@@ -65,21 +122,29 @@ export default function Catalog() {
         </div>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        {filteredBooks.length > 0 ? (
-          filteredBooks.map((book) => (
-            <BookCard key={book.id} book={book} />
-          ))
-        ) : (
-          <div className="col-span-full rounded-3xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center text-slate-700">
-            <p className="text-lg font-semibold">No se encontraron libros</p>
-            <p className="mt-2 text-sm text-slate-500">
-              Prueba con otro título, autor o palabra clave.
-            </p>
-          </div>
-        )}
-      </div>
-
+      {/* Estado de carga */}
+      {loading ? (
+        <div className="text-center py-10 text-gray-500 animate-pulse">Cargando catálogo...</div>
+      ) : books.length === 0 && statusType === "error" ? (
+        <div className="bg-red-50 border border-red-200 text-red-700 rounded-2xl p-6 text-center">
+          No se pudieron cargar los libros. {statusMessage}
+        </div>
+      ) : (
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          {filteredBooks.length > 0 ? (
+            filteredBooks.map((book) => (
+              <BookCard key={book.id} book={book} />
+            ))
+          ) : (
+            <div className="col-span-full rounded-3xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center text-slate-700">
+              <p className="text-lg font-semibold">No se encontraron libros</p>
+              <p className="mt-2 text-sm text-slate-500">
+                Prueba con otro título, autor, ISBN o palabra clave.
+              </p>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

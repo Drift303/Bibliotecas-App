@@ -1,6 +1,6 @@
 interface BookProps {
   book: {
-    id: number;
+    id: string | number;
     title: string;
     author: string;
     status: string;
