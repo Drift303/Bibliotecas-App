@@ -18,7 +18,7 @@ export default function BookCard({
         shadow-sm
         border
         border-[#E5E7EB]
-        p-4
+        p-6
         transition-all
         duration-300
         hover:shadow-xl
@@ -27,45 +27,19 @@ export default function BookCard({
       "
     >
 
-      {/* Espacio reservado para futuras portadas */}
-      <div
-        className="
-          h-48
-          rounded-xl
-          mb-4
-          bg-gradient-to-br
-          from-[#1E3A5F]
-          via-[#2A4D74]
-          to-[#3B82F6]
-          flex
-          flex-col
-          items-center
-          justify-center
-          text-white
-        "
-      >
-        <div className="text-5xl mb-2">
-          📖
-        </div>
-
-        <p className="text-xs uppercase tracking-widest opacity-80">
-          Biblioteca Digital
-        </p>
-      </div>
-
       <h2
         className="
           font-bold
           text-lg
           text-[#1E3A5F]
-          mb-1
+          mb-2
           line-clamp-2
         "
       >
         {book.title}
       </h2>
 
-      <p className="text-gray-500 mb-3">
+      <p className="text-gray-500 mb-4">
         {book.author}
       </p>
 
