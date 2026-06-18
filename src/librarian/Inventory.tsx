@@ -17,7 +17,13 @@ export default function Inventory() {
   const [showForm, setShowForm] = useState(false);
   const [editingBookId, setEditingBookId] = useState<string | number | null>(null);
   const [loading, setLoading] = useState(true);
-  const [syncMessage, setSyncMessage] = useState("");
+
+  // Mensaje de estado de conexión. Ahora es honesto: si dice error, es un error real.
+  const [statusMessage, setStatusMessage] = useState("");
+  const [statusType, setStatusType] = useState<"ok" | "error" | "info">("info");
+
+  // Bandera de error de guardado, para deshabilitar acciones si no hay backend
+  const [actionError, setActionError] = useState("");
 
   const [formData, setFormData] = useState({
     isbn: "",
@@ -29,53 +35,52 @@ export default function Inventory() {
   // --- EFECTO DE CARGA ASÍNCRONA DESDE EL BACKEND ---
   useEffect(() => {
     const loadBooks = async () => {
+      setLoading(true);
       try {
-        setLoading(true);
         const res = await api.get("/books");
-        
-        // Desestructuración limpia tolerante al formato de respuesta del backend
-        const rawBooks = res.data.success ? res.data.data : (res.data || []);
-        
-        if (Array.isArray(rawBooks) && rawBooks.length > 0) {
-          // Mapeamos los campos dinámicos de Postgres/SQLite al formato visual de tu tabla
-          const normalizedBooks = rawBooks.map((b: any) => ({
-            id: b.id,
-            isbn: b.isbn || "S/N",
-            title: b.title,
-            author: b.author,
-            // Mapeo unificado de Enums
-            status: b.available === true || b.status === "AVAILABLE" || b.statusLogical === "ACTIVE" 
-              ? "Disponible" 
-              : "Prestado"
-          }));
-          setBooks(normalizedBooks);
-          setSyncMessage("✨ Datos en tiempo real sincronizados desde la nube.");
-        } else {
-          loadFallbackData();
-        }
-      } catch (err) {
-        console.warn("Conmutando a capa offline local (Resguardo híbrido).");
-        loadFallbackData();
+
+        // Desestructuración tolerante al formato de respuesta del backend
+        const rawBooks = res.data?.success ? res.data.data : (res.data || []);
+
+        const normalizedBooks = (Array.isArray(rawBooks) ? rawBooks : []).map((b: any) => ({
+          id: b.id,
+          isbn: b.isbn || "S/N",
+          title: b.title,
+          author: b.author,
+          status:
+            b.available === true || b.status === "AVAILABLE" || b.statusLogical === "ACTIVE"
+              ? "Disponible"
+              : "Prestado",
+        }));
+
+        setBooks(normalizedBooks);
+        setStatusType("ok");
+        setStatusMessage(
+          normalizedBooks.length > 0
+            ? "Datos sincronizados desde el servidor."
+            : "Conectado al servidor. No hay libros registrados todavía."
+        );
+      } catch (err: any) {
+        // Ya no hay datos falsos de respaldo. Si falla, se dice la verdad.
+        setBooks([]);
+        setStatusType("error");
+        const detail = err?.response?.status
+          ? `Error ${err.response.status} al contactar el servidor.`
+          : "No se pudo conectar con el servidor (revisa CORS, backend o tu conexión).";
+        setStatusMessage(detail);
+        console.error("Error cargando libros:", err);
       } finally {
         setLoading(false);
       }
     };
 
-    const loadFallbackData = () => {
-      setBooks([
-        { id: "1", isbn: "978-0132350884", title: "Clean Code", author: "Robert Martin", status: "Disponible" },
-        { id: "2", isbn: "978-1492056355", title: "Learning React", author: "Alex Banks", status: "Prestado" },
-        { id: "3", isbn: "978-0321125217", title: "Refactoring", author: "Martin Fowler", status: "Disponible" }
-      ]);
-      setSyncMessage("⚡ Modo Local Seguro Activado (Entorno protegido para presentación).");
-    };
-
     loadBooks();
   }, []);
 
-  // --- CONTROLADORES DE EVENTOS ACTUALIZADOS ---
+  // --- CONTROLADORES DE EVENTOS ---
   const handleAddBook = () => {
     setEditingBookId(null);
+    setActionError("");
     setFormData({ isbn: "", title: "", author: "", status: "Disponible" });
     setShowForm(true);
   };
@@ -85,6 +90,7 @@ export default function Inventory() {
     if (!book) return;
 
     setEditingBookId(id);
+    setActionError("");
     setFormData({
       isbn: book.isbn,
       title: book.title,
@@ -99,11 +105,15 @@ export default function Inventory() {
     if (!confirmDelete) return;
 
     try {
-      // Intento optimista en el Backend
-      await api.delete(`/books/${id}`).catch(() => null);
-    } finally {
-      // Actualización inmediata en UI para mantener fluidez en tu auditoría
+      await api.delete(`/books/${id}`);
+      // Solo actualizamos la tabla si el backend confirmó el borrado.
       setBooks(books.filter((book) => book.id !== id));
+    } catch (err: any) {
+      const detail = err?.response?.status
+        ? `No se pudo eliminar (error ${err.response.status}).`
+        : "No se pudo eliminar: sin conexión con el servidor.";
+      alert(detail);
+      console.error("Error eliminando libro:", err);
     }
   };
 
@@ -113,42 +123,55 @@ export default function Inventory() {
       return;
     }
 
+    setActionError("");
+
     // Convertimos la selección visual a la lógica esperada por tus esquemas de Prisma
     const dbPayload = {
       isbn: formData.isbn,
       title: formData.title,
       author: formData.author,
-      // Mapea a tus campos de PostgreSQL y SQLite
       available: formData.status === "Disponible",
       status: formData.status === "Disponible" ? "AVAILABLE" : "LOANED",
       locationHall: "General",
-      locationShelf: "A1"
+      locationShelf: "A1",
     };
 
-    if (editingBookId) {
-      try {
-        await api.put(`/books/${editingBookId}`, dbPayload).catch(() => null);
-      } finally {
+    try {
+      if (editingBookId) {
+        const res = await api.put(`/books/${editingBookId}`, dbPayload);
+        const saved = res.data?.success ? res.data.data : res.data;
+
         setBooks(
           books.map((book) =>
-            book.id === editingBookId ? { ...book, ...formData } : book
+            book.id === editingBookId
+              ? { ...book, ...formData, id: saved?.id ?? book.id }
+              : book
           )
         );
-      }
-    } else {
-      const generatedId = typeof books[0]?.id === "string" ? crypto.randomUUID() : Date.now();
-      try {
-        await api.post("/books", dbPayload).catch(() => null);
-      } finally {
+      } else {
+        const res = await api.post("/books", dbPayload);
+        const saved = res.data?.success ? res.data.data : res.data;
+
+        // El id real viene del backend. Si por algo no viene, es un error, no se inventa uno.
+        if (!saved?.id) {
+          throw new Error("El servidor no devolvió un id válido para el libro nuevo.");
+        }
+
         const newBook: Book = {
-          id: generatedId,
+          id: saved.id,
           ...formData,
         };
         setBooks([...books, newBook]);
       }
-    }
 
-    setShowForm(false);
+      setShowForm(false);
+    } catch (err: any) {
+      const detail = err?.response?.status
+        ? `No se pudo guardar (error ${err.response.status}). Revisa los datos o tu sesión.`
+        : err?.message || "No se pudo guardar: sin conexión con el servidor.";
+      setActionError(detail);
+      console.error("Error guardando libro:", err);
+    }
   };
 
   const filteredBooks = books.filter(
@@ -163,7 +186,19 @@ export default function Inventory() {
       <div className="flex justify-between items-center mb-8">
         <div>
           <h1 className="text-4xl font-bold text-[#1E3A5F]">Inventario de Libros</h1>
-          <p className="text-sm text-blue-600 mt-1 font-medium">{syncMessage}</p>
+          {statusMessage && (
+            <p
+              className={`text-sm mt-1 font-medium ${
+                statusType === "error"
+                  ? "text-red-600"
+                  : statusType === "ok"
+                  ? "text-green-600"
+                  : "text-blue-600"
+              }`}
+            >
+              {statusMessage}
+            </p>
+          )}
         </div>
 
         <button
@@ -190,6 +225,12 @@ export default function Inventory() {
           <h2 className="text-xl font-semibold mb-4 text-[#1E3A5F]">
             {editingBookId ? "Editar Registro" : "Registrar Nuevo Libro"}
           </h2>
+
+          {actionError && (
+            <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg p-3 mb-4">
+              {actionError}
+            </div>
+          )}
 
           <div className="grid md:grid-cols-2 gap-4">
             <input
@@ -245,7 +286,11 @@ export default function Inventory() {
 
       {/* Vista de Carga */}
       {loading ? (
-        <div className="text-center py-10 text-gray-500 animate-pulse">Sincronizando inventario global...</div>
+        <div className="text-center py-10 text-gray-500 animate-pulse">Cargando inventario...</div>
+      ) : books.length === 0 && statusType === "error" ? (
+        <div className="bg-red-50 border border-red-200 text-red-700 rounded-2xl p-6 text-center">
+          No se pudieron cargar los libros. {statusMessage}
+        </div>
       ) : (
         <div className="bg-white rounded-2xl shadow-sm border border-[#E5E7EB] overflow-hidden">
           <table className="w-full">
