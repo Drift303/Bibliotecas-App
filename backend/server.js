@@ -19,9 +19,11 @@ app.use(helmet());
 app.use(express.json({ limit: '1mb' }));
 app.use(cookieParser());
 
+// Opción Correcta y Segura:
 const allowedOrigins = process.env.CORS_ORIGIN 
   ? process.env.CORS_ORIGIN.split(',') 
-  : 'http://localhost:3000';
+  : ['http://localhost:3000', 'http://localhost:5173']; // <-- Declarado como un Array real
+
 app.use(cors({ 
   origin: allowedOrigins, 
   credentials: true 

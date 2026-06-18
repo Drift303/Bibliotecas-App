@@ -10,4 +10,9 @@ const createBookSchema = z.object({
   statusPhysical: z.enum(['GOOD', 'DAMAGED', 'LOST']).optional(),
 });
 
-module.exports = { createBookSchema };
+const updateBookSchema = createBookSchema.partial();
+
+module.exports = {
+  createBookSchema,
+  updateBookSchema,
+};
