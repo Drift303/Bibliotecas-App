@@ -15,6 +15,9 @@ const userRoutes = require('./src/routes/userRoutes');
 
 const app = express();
 
+// ⬇️ AGREGAR ESTA LÍNEA (ANTES de los middlewares)
+app.set('trust proxy', 1);
+
 app.use(helmet());
 app.use(express.json({ limit: '1mb' }));
 app.use(cookieParser());
@@ -22,13 +25,12 @@ app.use(cookieParser());
 // Opción Correcta y Segura:
 const allowedOrigins = process.env.CORS_ORIGIN 
   ? process.env.CORS_ORIGIN.split(',') 
-  : ['http://localhost:3000', 'http://localhost:5173']; // <-- Declarado como un Array real
+  : ['http://localhost:3000', 'http://localhost:5173'];
 
 app.use(cors({ 
   origin: allowedOrigins, 
   credentials: true 
 }));
-
 
 const limiter = rateLimit({ windowMs: 60 * 1000, max: 150 });
 app.use(limiter);
