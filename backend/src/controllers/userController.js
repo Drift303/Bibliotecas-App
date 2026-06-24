@@ -1,10 +1,23 @@
 const prisma = require('../config/prismaClient');
 const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
 const { createUserSchema, updateUserSchema } = require('../validators/userValidators');
 
 const hashPassword = async (password) => {
   const salt = await bcrypt.genSalt(10);
   return bcrypt.hash(password, salt);
+};
+
+// Genera una contraseña temporal legible, ej: "Bb3kPq9x"
+// Evita caracteres ambiguos (0/O, 1/l/I) para que sea fácil de transcribir a mano.
+const generateTempPassword = () => {
+  const chars = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+  let pass = '';
+  const bytes = crypto.randomBytes(10);
+  for (let i = 0; i < 10; i++) {
+    pass += chars[bytes[i] % chars.length];
+  }
+  return pass;
 };
 
 const getUsers = async (req, res) => {
@@ -35,10 +48,6 @@ const createUser = async (req, res) => {
 
     const data = parsed.data;
 
-    // Role-based requirement: admin roles must have password
-    const adminRoles = ['admin_plantel', 'superadmin'];
-    if (adminRoles.includes(data.role) && !data.password) return res.status(400).json({ error: 'Password required for admin roles' });
-
     // Check uniqueness within tenant
     const existingStudentId = await prisma.user.findFirst({ where: { tenantId, studentId: data.studentId } });
     if (existingStudentId) return res.status(400).json({ error: 'studentId already exists in tenant' });
@@ -55,10 +64,27 @@ const createUser = async (req, res) => {
       barcode: data.barcode.trim(),
     };
 
-    if (data.password) payload.password = await hashPassword(data.password);
+    // Si el bibliotecario no especificó contraseña, se genera una temporal automáticamente.
+    // Se devuelve en texto plano SOLO en esta respuesta, una única vez.
+    let tempPassword = null;
+    if (data.password) {
+      payload.password = await hashPassword(data.password);
+    } else {
+      tempPassword = generateTempPassword();
+      payload.password = await hashPassword(tempPassword);
+    }
 
     const created = await prisma.user.create({ data: payload });
-    res.status(201).json({ success: true, data: created });
+
+    // No regresar el hash de la contraseña en la respuesta
+    const { password, ...userWithoutPassword } = created;
+
+    const responseData = { ...userWithoutPassword };
+    if (tempPassword) {
+      responseData.tempPassword = tempPassword;
+    }
+
+    res.status(201).json({ success: true, data: responseData });
   } catch (err) {
     console.error('createUser error', err);
     res.status(500).json({ error: 'Failed to create user' });
@@ -97,7 +123,8 @@ const updateUser = async (req, res) => {
     if (data.password) updateData.password = await hashPassword(data.password);
 
     const updated = await prisma.user.update({ where: { id: userId }, data: updateData });
-    res.json({ success: true, data: updated });
+    const { password, ...userWithoutPassword } = updated;
+    res.json({ success: true, data: userWithoutPassword });
   } catch (err) {
     console.error('updateUser error', err);
     res.status(500).json({ error: 'Failed to update user' });
