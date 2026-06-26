@@ -1,0 +1,38 @@
+# ============================================================================
+# DOCKERFILE - POSTGRESQL (Base de Datos Principal)
+# Entorno de Desarrollo - Simula ambiente Cloud
+# ============================================================================
+
+FROM postgres:16-alpine
+
+# Etiqueta de metadatos
+LABEL maintainer="Biblioteca Inteligente Team"
+LABEL description="PostgreSQL database container for development and cloud simulation"
+
+# Copiar scripts de inicialización
+# Los scripts en /docker-entrypoint-initdb.d/ se ejecutan automáticamente
+# en la primera inicialización del contenedor
+COPY ./init-scripts/ /docker-entrypoint-initdb.d/
+
+# Establecer permisos correctos para los scripts
+RUN chmod 755 /docker-entrypoint-initdb.d/*
+
+# Exponer puerto PostgreSQL
+EXPOSE 5432
+
+# Variables de entorno se cargan desde docker-compose.yml
+# POSTGRES_DB, POSTGRES_USER, POSTGRES_PASSWORD
+
+# Healthcheck para verificar que PostgreSQL está listo
+HEALTHCHECK --interval=15s --timeout=5s --start-period=30s --retries=5 \
+  CMD pg_isready -U ${POSTGRES_USER:-postgres}
+
+# Comando por defecto: ejecutar PostgreSQL con logging activado
+CMD ["postgres", "-c", "log_statement=all", "-c", "log_duration=on"]
+
+# ============================================================================
+# NOTAS:
+# - Los volúmenes montados permiten persistencia de datos entre reinicios
+# - Los scripts SQL en /docker-entrypoint-initdb.d/ se ejecutan una sola vez
+# - Para conectar: psql postgresql://user:password@localhost:5432/biblioteca
+# ============================================================================
