@@ -16,6 +16,14 @@ interface DashboardStats {
   pendingFines: number;
 }
 
+<<<<<<< HEAD
+=======
+const money = new Intl.NumberFormat("es-MX", {
+  style: "currency",
+  currency: "MXN",
+});
+
+>>>>>>> 060aff8 (feat: conexion con el backend, mejorar la seguridad con ProtectedRoute y creacion del boton de cerrar sesion)
 export default function Dashboard() {
   const [stats, setStats] = useState<DashboardStats>({
     books: 0,
@@ -24,6 +32,7 @@ export default function Dashboard() {
     pendingFines: 0,
   });
   const [recentLoans, setRecentLoans] = useState<LoanItem[]>([]);
+<<<<<<< HEAD
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string>("");
 
@@ -91,10 +100,64 @@ useEffect(() => {
 
   fetchDashboardData();
 }, []);
+=======
+  const [loading, setLoading] = useState(true);
+  const [statusMessage, setStatusMessage] = useState("");
+
+  useEffect(() => {
+    const fetchDashboardData = async () => {
+      try {
+        setLoading(true);
+        setStatusMessage("");
+
+        const [booksRes, usersRes, loansRes] = await Promise.all([
+          api.get("/books"),
+          api.get("/users?role=student"),
+          api.get("/loans"),
+        ]);
+
+        const books = Array.isArray(booksRes.data.data) ? booksRes.data.data : [];
+        const students = Array.isArray(usersRes.data.data) ? usersRes.data.data : [];
+        const loans = Array.isArray(loansRes.data.data) ? loansRes.data.data : [];
+
+        const activeLoans = loans.filter((loan: any) => loan.status === "ACTIVE");
+        const pendingFines = loans.reduce(
+          (total: number, loan: any) => total + Number(loan.fineAmount || 0),
+          0
+        );
+
+        setStats({
+          books: books.length,
+          activeLoans: activeLoans.length,
+          students: students.length,
+          pendingFines,
+        });
+
+        setRecentLoans(
+          loans.slice(0, 5).map((loan: any) => ({
+            id: String(loan.id),
+            studentName: loan.user?.name || "Alumno sin nombre",
+            bookTitle: loan.book?.title || "Libro sin titulo",
+            status: loan.status,
+          }))
+        );
+      } catch (err) {
+        setStats({ books: 0, activeLoans: 0, students: 0, pendingFines: 0 });
+        setRecentLoans([]);
+        setStatusMessage("Sin conexion al servidor");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchDashboardData();
+  }, []);
+>>>>>>> 060aff8 (feat: conexion con el backend, mejorar la seguridad con ProtectedRoute y creacion del boton de cerrar sesion)
 
   return (
     <DashboardLayout>
       <div className="bg-[#F8F9FB] min-h-screen p-6">
+<<<<<<< HEAD
         
         {/* Encabezado */}
         <div className="mb-8">
@@ -149,6 +212,25 @@ useEffect(() => {
         </div>
 
         {/* Tabla */}
+=======
+        <div className="mb-8">
+          <h1 className="text-4xl font-bold text-[#0F172A]">Dashboard</h1>
+          <p className="text-[#6B7280] mt-2">
+            Panel unificado de control bibliotecario.
+          </p>
+          {statusMessage && (
+            <p className="text-red-600 mt-2 text-sm font-medium">{statusMessage}</p>
+          )}
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
+          <StatCard label="Total de Libros" value={stats.books} tone="text-[#1E3A5F]" />
+          <StatCard label="Prestamos Activos" value={stats.activeLoans} tone="text-[#22C55E]" />
+          <StatCard label="Alumnos del Plantel" value={stats.students} tone="text-[#3B82F6]" />
+          <StatCard label="Multas Registradas" value={money.format(stats.pendingFines)} tone="text-[#D4A017]" />
+        </div>
+
+>>>>>>> 060aff8 (feat: conexion con el backend, mejorar la seguridad con ProtectedRoute y creacion del boton de cerrar sesion)
         <div className="mt-8 bg-white rounded-2xl border border-[#E5E7EB] shadow-sm overflow-hidden">
           <div className="p-5 border-b border-[#E5E7EB]">
             <h2 className="text-xl font-semibold text-[#1E3A5F]">Actividad Reciente</h2>
@@ -168,6 +250,7 @@ useEffect(() => {
                   <td className="p-4 text-[#334155]">{loan.studentName}</td>
                   <td className="p-4 text-[#334155]">{loan.bookTitle}</td>
                   <td className="p-4">
+<<<<<<< HEAD
                     {loan.status === "Prestado" ? (
                       <span className="bg-amber-100 text-amber-700 px-3 py-1 rounded-full text-sm font-medium">
                         En Préstamo
@@ -188,3 +271,65 @@ useEffect(() => {
     </DashboardLayout>
   );
 }
+=======
+                    <StatusBadge status={loan.status} />
+                  </td>
+                </tr>
+              ))}
+
+              {!loading && recentLoans.length === 0 && (
+                <tr>
+                  <td colSpan={3} className="p-8 text-center text-gray-500 font-medium">
+                    No hay prestamos registrados todavia.
+                  </td>
+                </tr>
+              )}
+
+              {loading && (
+                <tr>
+                  <td colSpan={3} className="p-8 text-center text-gray-500 font-medium">
+                    Cargando datos...
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </DashboardLayout>
+  );
+}
+
+function StatCard({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: number | string;
+  tone: string;
+}) {
+  return (
+    <div className="bg-white rounded-2xl p-6 border border-[#E5E7EB] shadow-sm">
+      <p className="text-[#6B7280] text-sm font-medium">{label}</p>
+      <h2 className={`text-4xl font-bold mt-2 ${tone}`}>{value}</h2>
+    </div>
+  );
+}
+
+function StatusBadge({ status }: { status: string }) {
+  if (status === "ACTIVE") {
+    return (
+      <span className="bg-amber-100 text-amber-700 px-3 py-1 rounded-full text-sm font-medium">
+        En prestamo
+      </span>
+    );
+  }
+
+  return (
+    <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-sm font-medium">
+      Devuelto
+    </span>
+  );
+}
+>>>>>>> 060aff8 (feat: conexion con el backend, mejorar la seguridad con ProtectedRoute y creacion del boton de cerrar sesion)

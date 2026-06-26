@@ -1,4 +1,12 @@
+<<<<<<< HEAD
 export default function Schools() {
+=======
+import LogoutButton from "../components/LogoutButton";
+
+export default function Schools() {
+  const userName = localStorage.getItem("userName") || "Administrador";
+
+>>>>>>> 060aff8 (feat: conexion con el backend, mejorar la seguridad con ProtectedRoute y creacion del boton de cerrar sesion)
   const schools = [
     {
       id: 1,
@@ -14,6 +22,7 @@ export default function Schools() {
 
   return (
     <div className="p-6">
+<<<<<<< HEAD
 
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-3xl font-bold">
@@ -29,6 +38,28 @@ export default function Schools() {
 
         <table className="w-full">
 
+=======
+      <div className="flex flex-col gap-4 mb-6 md:flex-row md:items-center md:justify-between">
+        <div>
+          <h1 className="text-3xl font-bold">
+            Gestion de Escuelas
+          </h1>
+          <p className="text-sm text-slate-600 mt-1">
+            Sesion iniciada como {userName}
+          </p>
+        </div>
+
+        <div className="flex gap-3">
+          <button className="bg-blue-700 text-white px-4 py-2 rounded-xl">
+            + Nueva Escuela
+          </button>
+          <LogoutButton />
+        </div>
+      </div>
+
+      <div className="bg-white rounded shadow overflow-hidden">
+        <table className="w-full">
+>>>>>>> 060aff8 (feat: conexion con el backend, mejorar la seguridad con ProtectedRoute y creacion del boton de cerrar sesion)
           <thead className="bg-slate-800 text-white">
             <tr>
               <th className="p-3 text-left">
@@ -67,6 +98,7 @@ export default function Schools() {
               </tr>
             ))}
           </tbody>
+<<<<<<< HEAD
 
         </table>
 
@@ -74,3 +106,10 @@ export default function Schools() {
     </div>
   );
 }
+=======
+        </table>
+      </div>
+    </div>
+  );
+}
+>>>>>>> 060aff8 (feat: conexion con el backend, mejorar la seguridad con ProtectedRoute y creacion del boton de cerrar sesion)

@@ -1,5 +1,9 @@
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 
+<<<<<<< HEAD
+=======
+import ProtectedRoute from "../components/ProtectedRoute";
+>>>>>>> 060aff8 (feat: conexion con el backend, mejorar la seguridad con ProtectedRoute y creacion del boton de cerrar sesion)
 import Dashboard from "../librarian/Dashboard";
 import Inventory from "../librarian/Inventory";
 import Loans from "../librarian/Loans";
@@ -15,6 +19,7 @@ export default function AppRoutes() {
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<Login />} />
+<<<<<<< HEAD
 
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/inventory" element={<Inventory />} />
@@ -28,3 +33,19 @@ export default function AppRoutes() {
     </BrowserRouter>
   );
 }
+=======
+        <Route path="/login" element={<Login />} />
+
+        <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+        <Route path="/inventory" element={<ProtectedRoute><Inventory /></ProtectedRoute>} />
+        <Route path="/quick-loan" element={<ProtectedRoute><QuickLoan /></ProtectedRoute>} />
+        <Route path="/students" element={<ProtectedRoute><Students /></ProtectedRoute>} />
+        <Route path="/catalog" element={<ProtectedRoute><Catalog /></ProtectedRoute>} />
+        <Route path="/schools" element={<ProtectedRoute><Schools /></ProtectedRoute>} />
+        <Route path="/billing" element={<ProtectedRoute><Billing /></ProtectedRoute>} />
+        <Route path="/loans" element={<ProtectedRoute><Loans /></ProtectedRoute>} />
+      </Routes>
+    </BrowserRouter>
+  );
+}
+>>>>>>> 060aff8 (feat: conexion con el backend, mejorar la seguridad con ProtectedRoute y creacion del boton de cerrar sesion)

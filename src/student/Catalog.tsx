@@ -1,6 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import api from "../api";
 import BookCard from "../cards/BookCard";
+<<<<<<< HEAD
+=======
+import LogoutButton from "../components/LogoutButton";
+>>>>>>> 060aff8 (feat: conexion con el backend, mejorar la seguridad con ProtectedRoute y creacion del boton de cerrar sesion)
 
 interface Book {
   id: string | number;
@@ -102,7 +106,15 @@ export default function Catalog() {
           </p>
         </div>
 
+<<<<<<< HEAD
         <div className="w-full md:w-80">
+=======
+        <div className="w-full md:w-80 flex flex-col gap-3">
+          <div className="flex justify-end">
+            <LogoutButton />
+          </div>
+
+>>>>>>> 060aff8 (feat: conexion con el backend, mejorar la seguridad con ProtectedRoute y creacion del boton de cerrar sesion)
           <label className="block text-sm font-medium text-slate-700 mb-2" htmlFor="search">
             Buscar libro
           </label>
@@ -147,4 +159,8 @@ export default function Catalog() {
       )}
     </div>
   );
+<<<<<<< HEAD
 }
+=======
+}
+>>>>>>> 060aff8 (feat: conexion con el backend, mejorar la seguridad con ProtectedRoute y creacion del boton de cerrar sesion)
