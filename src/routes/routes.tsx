@@ -1,9 +1,6 @@
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 
-<<<<<<< HEAD
-=======
 import ProtectedRoute from "../components/ProtectedRoute";
->>>>>>> 060aff8 (feat: conexion con el backend, mejorar la seguridad con ProtectedRoute y creacion del boton de cerrar sesion)
 import Dashboard from "../librarian/Dashboard";
 import Inventory from "../librarian/Inventory";
 import Loans from "../librarian/Loans";
@@ -19,23 +16,9 @@ export default function AppRoutes() {
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<Login />} />
-<<<<<<< HEAD
-
-        <Route path="/dashboard" element={<Dashboard />} />
-        <Route path="/inventory" element={<Inventory />} />
-        <Route path="/quick-loan" element={<QuickLoan />} />
-        <Route path="/students" element={<Students />} />
-        <Route path="/catalog" element={<Catalog />} />
-        <Route path="/schools" element={<Schools />} />
-        <Route path="/billing" element={<Billing />} />
-        <Route path="/loans" element={<Loans />} />
-      </Routes>
-    </BrowserRouter>
-  );
-}
-=======
         <Route path="/login" element={<Login />} />
 
+        {/* Todas las rutas operativas ahora requieren autenticación real */}
         <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
         <Route path="/inventory" element={<ProtectedRoute><Inventory /></ProtectedRoute>} />
         <Route path="/quick-loan" element={<ProtectedRoute><QuickLoan /></ProtectedRoute>} />
@@ -48,4 +31,3 @@ export default function AppRoutes() {
     </BrowserRouter>
   );
 }
->>>>>>> 060aff8 (feat: conexion con el backend, mejorar la seguridad con ProtectedRoute y creacion del boton de cerrar sesion)
