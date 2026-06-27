@@ -11,15 +11,12 @@ interface Student {
   role: string;
 }
 
-<<<<<<< HEAD
-=======
 interface TempPasswordModal {
   name: string;
   email: string;
   tempPassword: string;
 }
 
->>>>>>> 060aff8 (feat: conexion con el backend, mejorar la seguridad con ProtectedRoute y creacion del boton de cerrar sesion)
 export default function Students() {
   const [students, setStudents] = useState<Student[]>([]);
   const [search, setSearch] = useState("");
@@ -29,10 +26,7 @@ export default function Students() {
   const [actionError, setActionError] = useState("");
   const [statusMessage, setStatusMessage] = useState("");
   const [statusType, setStatusType] = useState<"ok" | "error" | "info">("info");
-<<<<<<< HEAD
-=======
   const [tempPasswordModal, setTempPasswordModal] = useState<TempPasswordModal | null>(null);
->>>>>>> 060aff8 (feat: conexion con el backend, mejorar la seguridad con ProtectedRoute y creacion del boton de cerrar sesion)
 
   const [formData, setFormData] = useState({
     name: "",
@@ -42,45 +36,6 @@ export default function Students() {
     role: "student",
   });
 
-<<<<<<< HEAD
-  // --- CARGAR USUARIOS DEL BACKEND ---
-  useEffect(() => {
-    const loadStudents = async () => {
-      setLoading(true);
-      try {
-        const res = await api.get("/users");
-        const rawUsers = res.data?.success ? res.data.data : (res.data || []);
-        const studentsList = (Array.isArray(rawUsers) ? rawUsers : []).filter(
-          (u: any) => u.role === "student"
-        );
-
-        setStudents(studentsList);
-        setStatusType("ok");
-        setStatusMessage(
-          studentsList.length > 0
-            ? "Datos sincronizados desde el servidor."
-            : "Conectado. No hay alumnos registrados."
-        );
-      } catch (err: any) {
-        setStudents([]);
-        setStatusType("error");
-        const detail = err?.response?.status
-          ? `Error ${err.response.status} al contactar el servidor.`
-          : "No se pudo conectar con el servidor.";
-        setStatusMessage(detail);
-        console.error("Error cargando alumnos:", err);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    loadStudents();
-  }, []);
-
-  const handleNewStudent = () => {
-    setEditingStudentId(null);
-    setActionError("");
-=======
   const loadStudents = async () => {
     setLoading(true);
     try {
@@ -108,7 +63,6 @@ export default function Students() {
   }, []);
 
   const resetForm = () => {
->>>>>>> 060aff8 (feat: conexion con el backend, mejorar la seguridad con ProtectedRoute y creacion del boton de cerrar sesion)
     setFormData({
       name: "",
       email: "",
@@ -116,15 +70,12 @@ export default function Students() {
       department: "",
       role: "student",
     });
-<<<<<<< HEAD
-=======
   };
 
   const handleNewStudent = () => {
     setEditingStudentId(null);
     setActionError("");
     resetForm();
->>>>>>> 060aff8 (feat: conexion con el backend, mejorar la seguridad con ProtectedRoute y creacion del boton de cerrar sesion)
     setShowForm(true);
   };
 
@@ -145,40 +96,23 @@ export default function Students() {
   };
 
   const handleDelete = async (id: string | number) => {
-<<<<<<< HEAD
-    const confirmDelete = window.confirm("¿Deseas eliminar este alumno?");
-=======
     const confirmDelete = window.confirm("Deseas eliminar este alumno?");
->>>>>>> 060aff8 (feat: conexion con el backend, mejorar la seguridad con ProtectedRoute y creacion del boton de cerrar sesion)
     if (!confirmDelete) return;
 
     try {
       await api.delete(`/users/${id}`);
       setStudents(students.filter((s) => s.id !== id));
-<<<<<<< HEAD
-    } catch (err: any) {
-      const detail = err?.response?.status
-        ? `Error ${err.response.status} al eliminar.`
-        : "No se pudo eliminar: sin conexión.";
-      alert(detail);
-      console.error("Error eliminando alumno:", err);
-=======
       setStatusType("ok");
       setStatusMessage("Alumno eliminado correctamente.");
     } catch (err) {
       setStatusType("error");
       setStatusMessage("No se pudo eliminar el alumno");
->>>>>>> 060aff8 (feat: conexion con el backend, mejorar la seguridad con ProtectedRoute y creacion del boton de cerrar sesion)
     }
   };
 
   const handleSaveStudent = async () => {
     if (!formData.name || !formData.email || !formData.studentId) {
-<<<<<<< HEAD
-      alert("Completa: Nombre, Email, Matrícula");
-=======
       setActionError("Completa nombre, correo y matricula");
->>>>>>> 060aff8 (feat: conexion con el backend, mejorar la seguridad con ProtectedRoute y creacion del boton de cerrar sesion)
       return;
     }
 
@@ -188,58 +122,13 @@ export default function Students() {
       name: formData.name,
       email: formData.email,
       studentId: formData.studentId,
-<<<<<<< HEAD
-      department: formData.department,
-=======
       department: formData.department || "General",
       barcode: formData.studentId,
->>>>>>> 060aff8 (feat: conexion con el backend, mejorar la seguridad con ProtectedRoute y creacion del boton de cerrar sesion)
       role: "student",
     };
 
     try {
       if (editingStudentId) {
-<<<<<<< HEAD
-        const res = await api.put(`/users/${editingStudentId}`, payload);
-        const saved = res.data?.success ? res.data.data : res.data;
-
-        setStudents(
-          students.map((s) =>
-            s.id === editingStudentId ? { ...s, ...formData } : s
-          )
-        );
-      } else {
-        const res = await api.post("/users", payload);
-        const saved = res.data?.success ? res.data.data : res.data;
-
-        if (!saved?.id) {
-          throw new Error("El servidor no devolvió un ID válido.");
-        }
-
-        const newStudent: Student = {
-          id: saved.id,
-          ...formData,
-        };
-        setStudents([...students, newStudent]);
-      }
-
-      setShowForm(false);
-    } catch (err: any) {
-      const detail = err?.response?.status
-        ? `Error ${err.response.status}. ${err.response.data?.message || "Revisa los datos."}`
-        : err?.message || "Sin conexión con el servidor.";
-      setActionError(detail);
-      console.error("Error guardando alumno:", err);
-    }
-  };
-
-  const filteredStudents = students.filter(
-    (student) =>
-      student.name.toLowerCase().includes(search.toLowerCase()) ||
-      student.email.toLowerCase().includes(search.toLowerCase()) ||
-      student.studentId.toLowerCase().includes(search.toLowerCase())
-  );
-=======
         await api.put(`/users/${editingStudentId}`, payload);
         setShowForm(false);
         await loadStudents();
@@ -281,7 +170,6 @@ export default function Students() {
       student.studentId.toLowerCase().includes(term)
     );
   });
->>>>>>> 060aff8 (feat: conexion con el backend, mejorar la seguridad con ProtectedRoute y creacion del boton de cerrar sesion)
 
   return (
     <DashboardLayout>
@@ -289,19 +177,7 @@ export default function Students() {
         <div>
           <h1 className="text-4xl font-bold text-[#1E3A5F]">Alumnos Registrados</h1>
           {statusMessage && (
-<<<<<<< HEAD
-            <p
-              className={`text-sm mt-1 font-medium ${
-                statusType === "error"
-                  ? "text-red-600"
-                  : statusType === "ok"
-                  ? "text-green-600"
-                  : "text-blue-600"
-              }`}
-            >
-=======
             <p className={`text-sm mt-1 font-medium ${statusType === "error" ? "text-red-600" : statusType === "ok" ? "text-green-600" : "text-blue-600"}`}>
->>>>>>> 060aff8 (feat: conexion con el backend, mejorar la seguridad con ProtectedRoute y creacion del boton de cerrar sesion)
               {statusMessage}
             </p>
           )}
@@ -318,11 +194,7 @@ export default function Students() {
       <div className="mb-6">
         <input
           type="text"
-<<<<<<< HEAD
-          placeholder="Buscar alumno por nombre, email o matrícula..."
-=======
           placeholder="Buscar alumno por nombre, email o matricula..."
->>>>>>> 060aff8 (feat: conexion con el backend, mejorar la seguridad con ProtectedRoute y creacion del boton de cerrar sesion)
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="w-full border border-[#E5E7EB] rounded-xl p-3 shadow-sm focus:outline-none focus:ring-2 focus:ring-[#3B82F6]"
@@ -344,17 +216,9 @@ export default function Students() {
           <div className="grid md:grid-cols-2 gap-4">
             <input
               type="text"
-<<<<<<< HEAD
-              placeholder="Matrícula"
-              value={formData.studentId}
-              onChange={(e) =>
-                setFormData({ ...formData, studentId: e.target.value })
-              }
-=======
               placeholder="Matricula"
               value={formData.studentId}
               onChange={(e) => setFormData({ ...formData, studentId: e.target.value })}
->>>>>>> 060aff8 (feat: conexion con el backend, mejorar la seguridad con ProtectedRoute y creacion del boton de cerrar sesion)
               className="border border-[#E5E7EB] p-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#3B82F6]"
             />
 
@@ -362,13 +226,7 @@ export default function Students() {
               type="text"
               placeholder="Nombre completo"
               value={formData.name}
-<<<<<<< HEAD
-              onChange={(e) =>
-                setFormData({ ...formData, name: e.target.value })
-              }
-=======
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
->>>>>>> 060aff8 (feat: conexion con el backend, mejorar la seguridad con ProtectedRoute y creacion del boton de cerrar sesion)
               className="border border-[#E5E7EB] p-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#3B82F6]"
             />
 
@@ -376,13 +234,7 @@ export default function Students() {
               type="email"
               placeholder="Correo"
               value={formData.email}
-<<<<<<< HEAD
-              onChange={(e) =>
-                setFormData({ ...formData, email: e.target.value })
-              }
-=======
               onChange={(e) => setFormData({ ...formData, email: e.target.value })}
->>>>>>> 060aff8 (feat: conexion con el backend, mejorar la seguridad con ProtectedRoute y creacion del boton de cerrar sesion)
               className="border border-[#E5E7EB] p-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#3B82F6]"
             />
 
@@ -390,13 +242,7 @@ export default function Students() {
               type="text"
               placeholder="Departamento"
               value={formData.department}
-<<<<<<< HEAD
-              onChange={(e) =>
-                setFormData({ ...formData, department: e.target.value })
-              }
-=======
               onChange={(e) => setFormData({ ...formData, department: e.target.value })}
->>>>>>> 060aff8 (feat: conexion con el backend, mejorar la seguridad con ProtectedRoute y creacion del boton de cerrar sesion)
               className="border border-[#E5E7EB] p-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#3B82F6]"
             />
           </div>
@@ -429,11 +275,7 @@ export default function Students() {
           <table className="w-full">
             <thead className="bg-[#1E3A5F] text-white">
               <tr>
-<<<<<<< HEAD
-                <th className="p-3 text-left">Matrícula</th>
-=======
                 <th className="p-3 text-left">Matricula</th>
->>>>>>> 060aff8 (feat: conexion con el backend, mejorar la seguridad con ProtectedRoute y creacion del boton de cerrar sesion)
                 <th className="p-3 text-left">Nombre</th>
                 <th className="p-3 text-left">Correo</th>
                 <th className="p-3 text-left">Depto.</th>
@@ -442,14 +284,7 @@ export default function Students() {
             </thead>
             <tbody>
               {filteredStudents.map((student) => (
-<<<<<<< HEAD
-                <tr
-                  key={student.id}
-                  className="border-b hover:bg-[#F8F9FB] transition-colors duration-200"
-                >
-=======
                 <tr key={student.id} className="border-b hover:bg-[#F8F9FB] transition-colors duration-200">
->>>>>>> 060aff8 (feat: conexion con el backend, mejorar la seguridad con ProtectedRoute y creacion del boton de cerrar sesion)
                   <td className="p-3 font-mono text-sm">{student.studentId}</td>
                   <td className="p-3 font-medium">{student.name}</td>
                   <td className="p-3 text-gray-600">{student.email}</td>
@@ -470,8 +305,6 @@ export default function Students() {
                   </td>
                 </tr>
               ))}
-<<<<<<< HEAD
-=======
 
               {filteredStudents.length === 0 && (
                 <tr>
@@ -480,16 +313,10 @@ export default function Students() {
                   </td>
                 </tr>
               )}
->>>>>>> 060aff8 (feat: conexion con el backend, mejorar la seguridad con ProtectedRoute y creacion del boton de cerrar sesion)
             </tbody>
           </table>
         </div>
       )}
-<<<<<<< HEAD
-    </DashboardLayout>
-  );
-}
-=======
 
       {tempPasswordModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-6 z-50">
@@ -529,4 +356,3 @@ export default function Students() {
     </DashboardLayout>
   );
 }
->>>>>>> 060aff8 (feat: conexion con el backend, mejorar la seguridad con ProtectedRoute y creacion del boton de cerrar sesion)
