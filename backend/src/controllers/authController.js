@@ -3,6 +3,16 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { loginSchema } = require('../validators/authValidators');
 
+// Centralizamos las opciones de la cookie en un solo lugar.
+// CRÍTICO: login y logout deben usar EXACTAMENTE las mismas opciones,
+// o el navegador no podrá igualar la cookie para borrarla y quedará "atascada".
+const getCookieOptions = () => ({
+  httpOnly: true,
+  secure: process.env.NODE_ENV === 'production',
+  sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+  path: '/',
+});
+
 const login = async (req, res) => {
   try {
     const parsed = loginSchema.safeParse(req.body);
@@ -37,12 +47,14 @@ const login = async (req, res) => {
 
     const token = jwt.sign(payload, secret, { expiresIn: '7d' });
 
-   res.cookie('token', token, {
-  httpOnly: true,
-  secure: process.env.NODE_ENV === 'production',
-  sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-  maxAge: 7 * 24 * 3600 * 1000,
-});
+    // Antes de poner la cookie nueva, limpiamos cualquier cookie vieja del mismo nombre
+    // que pudiera existir con otras opciones (por ejemplo, de antes del fix de sameSite).
+    res.clearCookie('token', getCookieOptions());
+
+    res.cookie('token', token, {
+      ...getCookieOptions(),
+      maxAge: 7 * 24 * 3600 * 1000,
+    });
 
     res.json({ success: true, user: { id: user.id, name: user.name, email: user.email, role: user.role }, tenant: { id: tenant.id, name: tenant.name } });
   } catch (err) {
@@ -52,7 +64,9 @@ const login = async (req, res) => {
 };
 
 const logout = (req, res) => {
-  res.clearCookie('token');
+  // Usa exactamente las mismas opciones que login para garantizar que el navegador
+  // identifique la cookie correcta y la borre de verdad.
+  res.clearCookie('token', getCookieOptions());
   res.json({ success: true });
 };
 

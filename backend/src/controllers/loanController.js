@@ -3,6 +3,14 @@ const { createLoanSchema, returnLoanSchema } = require('../validators/loanValida
 
 const FINE_PER_DAY = 5.0; // MXN
 
+// Traduce el estado físico capturado por el bibliotecario (en español, desde el
+// modal de devolución) al enum real de Prisma para Book.statusPhysical.
+const CONDITION_TO_STATUS_PHYSICAL = {
+  Excelente: 'GOOD',
+  Bueno: 'GOOD',
+  Dañado: 'DAMAGED',
+};
+
 const getLoans = async (req, res) => {
   try {
     const tenantId = req.user && req.user.tenantId;
@@ -38,7 +46,6 @@ const createLoan = async (req, res) => {
     const tenantId = req.user && req.user.tenantId;
     if (!tenantId) return res.status(401).json({ error: 'Missing tenant context' });
     const { userId, bookId, dueDate } = parsed.data;
-    // Validate that both user and book belong to tenant
     const [user, book] = await Promise.all([
       prisma.user.findUnique({ where: { id: userId } }),
       prisma.book.findUnique({ where: { id: bookId } }),
@@ -47,7 +54,6 @@ const createLoan = async (req, res) => {
     if (!book || book.tenantId !== tenantId) return res.status(400).json({ error: 'Book not found in tenant' });
     if (book.statusLogical === 'DELETED_LOGICAL') return res.status(400).json({ error: 'Book is deleted' });
     if (!book.available) return res.status(400).json({ error: 'Book not available' });
-    // create loan and update book in a transaction
     const loanData = {
       tenantId,
       userId,
@@ -69,8 +75,10 @@ const createLoan = async (req, res) => {
 const returnLoan = async (req, res) => {
   try {
     const loanId = req.params.id;
-    const parsed = returnLoanSchema.safeParse({ loanId });
+    const parsed = returnLoanSchema.safeParse({ loanId, condition: req.body?.condition });
     if (!parsed.success) return res.status(400).json({ errors: parsed.error.format() });
+    const { condition } = parsed.data;
+
     const tenantId = req.user && req.user.tenantId;
     if (!tenantId) return res.status(401).json({ error: 'Missing tenant context' });
     const loan = await prisma.loan.findUnique({ where: { id: loanId }, include: { book: true } });
@@ -83,10 +91,17 @@ const returnLoan = async (req, res) => {
       const diff = Math.ceil((now - loan.dueDate) / msPerDay);
       fineAmount = diff * FINE_PER_DAY;
     }
-    // Update loan and book atomically
+
+    // Si el bibliotecario capturó el estado físico del libro al devolverlo,
+    // se actualiza statusPhysical. Si no se envía, el libro conserva su estado anterior.
+    const bookUpdateData = { available: true, statusLogical: 'ACTIVE' };
+    if (condition && CONDITION_TO_STATUS_PHYSICAL[condition]) {
+      bookUpdateData.statusPhysical = CONDITION_TO_STATUS_PHYSICAL[condition];
+    }
+
     const [updatedLoan, updatedBook] = await prisma.$transaction([
       prisma.loan.update({ where: { id: loanId }, data: { returnDate: now, status: 'RETURNED', fineAmount } }),
-      prisma.book.update({ where: { id: loan.bookId }, data: { available: true, statusLogical: 'ACTIVE' } }),
+      prisma.book.update({ where: { id: loan.bookId }, data: bookUpdateData }),
     ]);
     res.json({ success: true, data: { loan: updatedLoan, book: updatedBook } });
   } catch (err) {
