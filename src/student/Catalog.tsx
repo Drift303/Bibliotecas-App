@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import api from "../api";
 import BookCard from "../cards/BookCard";
+import LogoutButton from "../components/LogoutButton";
 
 interface Book {
   id: string | number;
@@ -102,7 +103,11 @@ export default function Catalog() {
           </p>
         </div>
 
-        <div className="w-full md:w-80">
+        <div className="w-full md:w-80 flex flex-col gap-3">
+          <div className="flex justify-end">
+            <LogoutButton />
+          </div>
+
           <label className="block text-sm font-medium text-slate-700 mb-2" htmlFor="search">
             Buscar libro
           </label>
@@ -116,7 +121,7 @@ export default function Catalog() {
               className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 pr-12 text-sm text-slate-900 shadow-sm outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
             />
             <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 text-sm">
-              🔎
+              Análisis🔎
             </span>
           </div>
         </div>
