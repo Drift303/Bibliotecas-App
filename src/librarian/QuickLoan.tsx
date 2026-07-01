@@ -28,6 +28,16 @@ interface Loan {
   status: string;
 }
 
+const normalizeLoan = (loan: any): Loan => ({
+  id: loan.id,
+  userId: loan.userId ?? loan.user?.id,
+  bookId: loan.bookId ?? loan.book?.id,
+  studentName: loan.studentName || loan.user?.name || "Sin estudiante",
+  bookTitle: loan.bookTitle || loan.book?.title || "Sin libro",
+  dueDate: loan.dueDate ? new Date(loan.dueDate).toISOString().slice(0, 10) : "",
+  status: loan.status || "ACTIVE",
+});
+
 export default function QuickLoan() {
   const [students, setStudents] = useState<Student[]>([]);
   const [books, setBooks] = useState<Book[]>([]);
@@ -55,9 +65,10 @@ export default function QuickLoan() {
     const loadData = async () => {
       setLoading(true);
       try {
-        const [studentsRes, booksRes] = await Promise.all([
-          api.get("/users"),
+        const [studentsRes, booksRes, loansRes] = await Promise.all([
+          api.get("/users", { params: { role: "student" } }),
           api.get("/books"),
+          api.get("/loans"),
         ]);
 
         const rawStudents = studentsRes.data?.success
@@ -76,8 +87,14 @@ export default function QuickLoan() {
         );
         setBooks(filteredBooks);
 
+        const rawLoans = loansRes.data?.success
+          ? loansRes.data.data
+          : loansRes.data || [];
+        const normalizedLoans = (Array.isArray(rawLoans) ? rawLoans : []).map(normalizeLoan);
+        setLoans(normalizedLoans);
+
         setStatusType("ok");
-        setStatusMessage(`${filteredStudents.length} estudiantes, ${filteredBooks.length} libros disponibles`);
+        setStatusMessage(`${filteredStudents.length} estudiantes, ${filteredBooks.length} libros disponibles y ${normalizedLoans.length} préstamos cargados`);
       } catch (err: any) {
         setStatusType("error");
         const detail = err?.response?.status
@@ -160,8 +177,9 @@ export default function QuickLoan() {
       });
 
       const newLoan = res.data?.success ? res.data.data : res.data;
-      setLoans([...loans, newLoan]);
-      setBooks(books.filter((b) => b.id !== form.bookId));
+      const normalizedLoan = normalizeLoan(newLoan);
+      setLoans((prev) => [normalizedLoan, ...prev]);
+      setBooks((prev) => prev.filter((b) => String(b.id) !== String(form.bookId)));
 
       // Limpiar form
       setForm({

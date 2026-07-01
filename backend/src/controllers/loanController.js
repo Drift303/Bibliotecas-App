@@ -62,7 +62,13 @@ const createLoan = async (req, res) => {
       dueDate: dueDate ? new Date(dueDate) : undefined,
     };
     const [createdLoan, updatedBook] = await prisma.$transaction([
-      prisma.loan.create({ data: loanData }),
+      prisma.loan.create({
+        data: loanData,
+        include: {
+          user: { select: { id: true, name: true, email: true, studentId: true } },
+          book: { select: { id: true, title: true, author: true, isbn: true } },
+        },
+      }),
       prisma.book.update({ where: { id: bookId }, data: { statusLogical: 'BORROWED', available: false } }),
     ]);
     res.status(201).json({ success: true, data: createdLoan });
