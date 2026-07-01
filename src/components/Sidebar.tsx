@@ -1,5 +1,6 @@
 import { Link, useLocation } from "react-router-dom";
 import LogoutButton from "./LogoutButton";
+import { useTheme } from "../context/ThemeContext";
 // Importamos iconos profesionales para tus enlaces
 import { 
   LayoutDashboard, 
@@ -29,6 +30,7 @@ const BookIcon = () => (
 
 export default function Sidebar() {
   const location = useLocation();
+  const { isDark } = useTheme();
   const userName = localStorage.getItem("userName") || "Bibliotecario";
 
   // Agregamos la propiedad 'icon' asignando el componente correspondiente
@@ -41,14 +43,16 @@ export default function Sidebar() {
   ];
 
   return (
-    <aside className="w-64 bg-[#1E3A5F] text-white min-h-screen shadow-xl flex flex-col">
+    <aside className={`w-64 text-white min-h-screen shadow-xl flex flex-col transition-colors ${
+      isDark ? "bg-slate-900 border-r border-slate-700" : "bg-[#1E3A5F]"
+    }`}>
       {/* Header con Ícono + "Biblioteca" + Nombre de usuario */}
-      <div className="p-6 border-b border-white/20">
+      <div className={`p-6 border-b transition-colors ${isDark ? "border-slate-700" : "border-white/20"}`}>
         <div className="flex items-center gap-3">
           <BookIcon />
           <span className="text-2xl font-bold tracking-tight">Biblioteca</span>
         </div>
-        <div className="text-sm text-white/70 mt-2 truncate font-medium">
+        <div className={`text-sm mt-2 truncate font-medium ${isDark ? "text-slate-400" : "text-white/70"}`}>
           {userName}
         </div>
       </div>
@@ -65,12 +69,16 @@ export default function Sidebar() {
               to={link.to}
               className={`px-4 py-3 rounded-xl transition-all duration-300 flex items-center gap-3 ${
                 isActive
-                  ? "bg-blue-100 text-[#1E3A5F] font-bold shadow-md"
-                  : "hover:bg-[#3B82F6]/30 hover:translate-x-2 text-white/90"
+                  ? isDark
+                    ? "bg-blue-600 text-white font-bold shadow-md"
+                    : "bg-blue-100 text-[#1E3A5F] font-bold shadow-md"
+                  : isDark
+                    ? "hover:bg-slate-800 hover:translate-x-2 text-slate-200"
+                    : "hover:bg-[#3B82F6]/30 hover:translate-x-2 text-white/90"
               }`}
             >
               {/* Renderizamos el icono al lado del texto */}
-              <Icon className={`w-5 h-5 ${isActive ? "text-[#1E3A5F]" : "text-blue-400"}`} />
+              <Icon className={`w-5 h-5 ${isActive ? "text-blue-400" : "text-blue-400"}`} />
               <span>{link.label}</span>
             </Link>
           );
@@ -78,7 +86,7 @@ export default function Sidebar() {
       </nav>
 
       {/* Botón de Cerrar Sesión Rojo al final */}
-      <div className="p-4 border-t border-white/20">
+      <div className={`p-4 border-t transition-colors ${isDark ? "border-slate-700" : "border-white/20"}`}>
         <LogoutButton className="w-full py-3 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-xl transition duration-300 text-center block" />
       </div>
     </aside>

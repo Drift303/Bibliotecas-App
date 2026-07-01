@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import api from "../api";
 import DashboardLayout from "../components/DashboardLayout";
+import { useTheme } from "../context/ThemeContext";
 
 interface Student {
   id: string | number;
@@ -39,6 +40,7 @@ const normalizeLoan = (loan: any): Loan => ({
 });
 
 export default function QuickLoan() {
+  const { isDark } = useTheme();
   const [students, setStudents] = useState<Student[]>([]);
   const [books, setBooks] = useState<Book[]>([]);
   const [loans, setLoans] = useState<Loan[]>([]);
@@ -205,15 +207,21 @@ export default function QuickLoan() {
 
   return (
     <DashboardLayout>
-      <h1 className="text-4xl font-bold mb-8 text-[#1E3A5F]">Registrar Préstamo</h1>
+      <h1 className={`text-4xl font-bold mb-8 ${isDark ? "text-blue-400" : "text-[#1E3A5F]"}`}>Registrar Préstamo</h1>
 
       {statusMessage && (
         <div
-          className={`p-4 rounded-xl mb-6 font-medium ${
+          className={`p-4 rounded-xl mb-6 font-medium transition-colors ${
             statusType === "error"
-              ? "bg-red-50 text-red-700 border border-red-200"
+              ? isDark 
+                ? "bg-red-900 text-red-200 border border-red-700"
+                : "bg-red-50 text-red-700 border border-red-200"
               : statusType === "ok"
-              ? "bg-green-50 text-green-700 border border-green-200"
+              ? isDark
+                ? "bg-green-900 text-green-200 border border-green-700"
+                : "bg-green-50 text-green-700 border border-green-200"
+              : isDark
+              ? "bg-blue-900 text-blue-200 border border-blue-700"
               : "bg-blue-50 text-blue-700 border border-blue-200"
           }`}
         >
@@ -221,9 +229,9 @@ export default function QuickLoan() {
         </div>
       )}
 
-      <div className="bg-white p-6 rounded-2xl shadow-sm border border-[#E5E7EB]">
+      <div className={`p-6 rounded-2xl shadow-sm border transition-colors ${isDark ? "bg-slate-800 border-slate-700" : "bg-white border-[#E5E7EB]"}`}>
         {actionError && (
-          <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg p-3 mb-4">
+          <div className={`border text-sm rounded-lg p-3 mb-4 transition-colors ${isDark ? "bg-red-900 border-red-700 text-red-200" : "bg-red-50 border-red-200 text-red-700"}`}>
             {actionError}
           </div>
         )}
@@ -231,7 +239,7 @@ export default function QuickLoan() {
         <div className="grid md:grid-cols-2 gap-6">
           {/* SECCIÓN ALUMNO */}
           <div>
-            <h2 className="text-lg font-semibold mb-4 text-[#1E3A5F]">👤 Alumno</h2>
+            <h2 className={`text-lg font-semibold mb-4 ${isDark ? "text-blue-400" : "text-[#1E3A5F]"}`}>👤 Alumno</h2>
 
             <div className="relative">
               <input
@@ -240,19 +248,19 @@ export default function QuickLoan() {
                 value={form.studentSearch}
                 onChange={(e) => handleStudentSearchChange(e.target.value)}
                 onFocus={() => setShowStudentSuggestions(true)}
-                className="w-full border border-[#E5E7EB] p-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#3B82F6]"
+                className={`w-full border p-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#3B82F6] transition-colors ${isDark ? "bg-slate-700 border-slate-600 text-white placeholder-slate-400" : "border-[#E5E7EB] bg-white text-black"}`}
               />
 
               {showStudentSuggestions && form.studentSearch && filteredStudents.length > 0 && (
-                <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-[#E5E7EB] rounded-xl shadow-lg z-10 max-h-48 overflow-y-auto">
+                <div className={`absolute top-full left-0 right-0 mt-1 border rounded-xl shadow-lg z-10 max-h-48 overflow-y-auto transition-colors ${isDark ? "bg-slate-700 border-slate-600" : "bg-white border-[#E5E7EB]"}`}>
                   {filteredStudents.map((student) => (
                     <button
                       key={student.id}
                       onClick={() => handleSelectStudent(student)}
-                      className="w-full text-left px-4 py-3 hover:bg-[#F8F9FB] transition-colors border-b last:border-b-0"
+                      className={`w-full text-left px-4 py-3 transition-colors border-b last:border-b-0 ${isDark ? "hover:bg-slate-600 text-white border-slate-600" : "hover:bg-[#F8F9FB] text-black border-[#E5E7EB]"}`}
                     >
-                      <div className="font-medium text-[#1E3A5F]">{student.name}</div>
-                      <div className="text-sm text-gray-500">{student.studentId} • {student.department}</div>
+                      <div className="font-medium">{student.name}</div>
+                      <div className={`text-sm ${isDark ? "text-slate-400" : "text-gray-500"}`}>{student.studentId} • {student.department}</div>
                     </button>
                   ))}
                 </div>
@@ -260,16 +268,16 @@ export default function QuickLoan() {
             </div>
 
             {form.userId && (
-              <div className="mt-3 p-3 bg-green-50 rounded-lg border border-green-200">
-                <p className="text-sm text-green-700 font-medium">✅ {form.studentSearch}</p>
-                <p className="text-xs text-green-600">Mat: {form.studentId} | {form.department}</p>
+              <div className={`mt-3 p-3 rounded-lg border transition-colors ${isDark ? "bg-green-900 border-green-700" : "bg-green-50 border-green-200"}`}>
+                <p className={`text-sm font-medium ${isDark ? "text-green-200" : "text-green-700"}`}>✅ {form.studentSearch}</p>
+                <p className={`text-xs ${isDark ? "text-green-300" : "text-green-600"}`}>Mat: {form.studentId} | {form.department}</p>
               </div>
             )}
           </div>
 
           {/* SECCIÓN LIBRO */}
           <div>
-            <h2 className="text-lg font-semibold mb-4 text-[#1E3A5F]">📚 Libro</h2>
+            <h2 className={`text-lg font-semibold mb-4 ${isDark ? "text-blue-400" : "text-[#1E3A5F]"}`}>📚 Libro</h2>
 
             <div className="relative">
               <input
@@ -278,19 +286,19 @@ export default function QuickLoan() {
                 value={form.bookSearch}
                 onChange={(e) => handleBookSearchChange(e.target.value)}
                 onFocus={() => setShowBookSuggestions(true)}
-                className="w-full border border-[#E5E7EB] p-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#3B82F6]"
+                className={`w-full border p-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#3B82F6] transition-colors ${isDark ? "bg-slate-700 border-slate-600 text-white placeholder-slate-400" : "border-[#E5E7EB] bg-white text-black"}`}
               />
 
               {showBookSuggestions && form.bookSearch && filteredBooks.length > 0 && (
-                <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-[#E5E7EB] rounded-xl shadow-lg z-10 max-h-48 overflow-y-auto">
+                <div className={`absolute top-full left-0 right-0 mt-1 border rounded-xl shadow-lg z-10 max-h-48 overflow-y-auto transition-colors ${isDark ? "bg-slate-700 border-slate-600" : "bg-white border-[#E5E7EB]"}`}>
                   {filteredBooks.map((book) => (
                     <button
                       key={book.id}
                       onClick={() => handleSelectBook(book)}
-                      className="w-full text-left px-4 py-3 hover:bg-[#F8F9FB] transition-colors border-b last:border-b-0"
+                      className={`w-full text-left px-4 py-3 transition-colors border-b last:border-b-0 ${isDark ? "hover:bg-slate-600 text-white border-slate-600" : "hover:bg-[#F8F9FB] text-black border-[#E5E7EB]"}`}
                     >
-                      <div className="font-medium text-[#1E3A5F]">{book.title}</div>
-                      <div className="text-sm text-gray-500">{book.author}</div>
+                      <div className="font-medium">{book.title}</div>
+                      <div className={`text-sm ${isDark ? "text-slate-400" : "text-gray-500"}`}>{book.author}</div>
                     </button>
                   ))}
                 </div>
@@ -298,30 +306,30 @@ export default function QuickLoan() {
             </div>
 
             {form.bookId && (
-              <div className="mt-3 p-3 bg-green-50 rounded-lg border border-green-200">
-                <p className="text-sm text-green-700 font-medium">✅ {form.bookTitle}</p>
+              <div className={`mt-3 p-3 rounded-lg border transition-colors ${isDark ? "bg-green-900 border-green-700" : "bg-green-50 border-green-200"}`}>
+                <p className={`text-sm font-medium ${isDark ? "text-green-200" : "text-green-700"}`}>✅ {form.bookTitle}</p>
               </div>
             )}
 
             {/* PRÓXIMAMENTE CÓDIGO DE BARRAS */}
-            <div className="mt-4 p-3 bg-yellow-50 rounded-lg border border-yellow-200">
-              <p className="text-sm text-yellow-700 font-medium">🔜 Próximamente: Código de Barras</p>
+            <div className={`mt-4 p-3 rounded-lg border transition-colors ${isDark ? "bg-yellow-900 border-yellow-700" : "bg-yellow-50 border-yellow-200"}`}>
+              <p className={`text-sm font-medium ${isDark ? "text-yellow-200" : "text-yellow-700"}`}>🔜 Próximamente: Código de Barras</p>
             </div>
-            <button className="w-full mt-2 border border-yellow-300 text-yellow-700 px-4 py-2 rounded-lg transition-colors hover:bg-yellow-50">
+            <button className={`w-full mt-2 border px-4 py-2 rounded-lg transition-colors ${isDark ? "border-yellow-600 text-yellow-300 hover:bg-yellow-900/30" : "border-yellow-300 text-yellow-700 hover:bg-yellow-50"}`}>
               escaneo 
             </button>
           </div>
         </div>
 
-        <div className="mt-6 border-t border-[#E5E7EB] pt-6">
-          <label className="block mb-2 text-sm font-medium text-gray-700">
+        <div className={`mt-6 border-t pt-6 transition-colors ${isDark ? "border-slate-700" : "border-[#E5E7EB]"}`}>
+          <label className={`block mb-2 text-sm font-medium ${isDark ? "text-slate-300" : "text-gray-700"}`}>
             📅 Fecha de devolución
           </label>
           <input
             type="date"
             value={form.dueDate}
             onChange={(e) => setForm({ ...form, dueDate: e.target.value })}
-            className="w-full border border-[#E5E7EB] p-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#3B82F6]"
+            className={`w-full border p-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#3B82F6] transition-colors ${isDark ? "bg-slate-700 border-slate-600 text-white" : "border-[#E5E7EB] bg-white text-black"}`}
           />
         </div>
 
@@ -329,20 +337,20 @@ export default function QuickLoan() {
           <button
             onClick={handleSubmit}
             disabled={!form.userId || !form.bookId || !form.dueDate}
-            className="bg-[#1E3A5F] text-white px-6 py-3 rounded-xl transition-all duration-300 hover:bg-[#3B82F6] hover:shadow-lg hover:-translate-y-1 disabled:opacity-50 disabled:cursor-not-allowed"
+            className={`px-6 py-3 rounded-xl transition-all duration-300 font-semibold text-white disabled:opacity-50 disabled:cursor-not-allowed ${isDark ? "bg-blue-600 hover:bg-blue-700 hover:shadow-lg hover:-translate-y-1" : "bg-[#1E3A5F] hover:bg-[#3B82F6] hover:shadow-lg hover:-translate-y-1"}`}
           >
             ✔️ Registrar Préstamo
           </button>
         </div>
       </div>
 
-      <div className="bg-white mt-8 rounded-2xl shadow-sm border border-[#E5E7EB] overflow-hidden">
-        <div className="p-5 border-b border-[#E5E7EB]">
-          <h2 className="text-xl font-bold text-[#1E3A5F]">📋 Préstamos Registrados</h2>
+      <div className={`mt-8 rounded-2xl shadow-sm border overflow-hidden transition-colors ${isDark ? "bg-slate-800 border-slate-700" : "bg-white border-[#E5E7EB]"}`}>
+        <div className={`p-5 border-b transition-colors ${isDark ? "bg-slate-700 border-slate-600" : "bg-white border-[#E5E7EB]"}`}>
+          <h2 className={`text-xl font-bold ${isDark ? "text-blue-400" : "text-[#1E3A5F]"}`}>📋 Préstamos Registrados</h2>
         </div>
 
         <table className="w-full">
-          <thead className="bg-[#1E3A5F] text-white">
+          <thead className={`transition-colors ${isDark ? "bg-slate-700 text-white" : "bg-[#1E3A5F] text-white"}`}>
             <tr>
               <th className="p-3 text-left">Alumno</th>
               <th className="p-3 text-left">Libro</th>
@@ -353,12 +361,12 @@ export default function QuickLoan() {
 
           <tbody>
             {loans.map((loan) => (
-              <tr key={loan.id} className="border-b hover:bg-[#F8F9FB] transition-colors">
-                <td className="p-3">{loan.studentName}</td>
-                <td className="p-3">{loan.bookTitle}</td>
-                <td className="p-3">{loan.dueDate}</td>
+              <tr key={loan.id} className={`border-b transition-colors ${isDark ? "hover:bg-slate-700 border-slate-700" : "hover:bg-[#F8F9FB] border-[#E5E7EB]"}`}>
+                <td className={`p-3 ${isDark ? "text-slate-200" : "text-black"}`}>{loan.studentName}</td>
+                <td className={`p-3 ${isDark ? "text-slate-200" : "text-black"}`}>{loan.bookTitle}</td>
+                <td className={`p-3 ${isDark ? "text-slate-200" : "text-black"}`}>{loan.dueDate}</td>
                 <td className="p-3">
-                  <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-sm font-medium">
+                  <span className={`px-3 py-1 rounded-full text-sm font-medium transition-colors ${isDark ? "bg-green-900 text-green-200" : "bg-green-100 text-green-700"}`}>
                     {loan.status}
                   </span>
                 </td>
@@ -367,7 +375,7 @@ export default function QuickLoan() {
 
             {loans.length === 0 && (
               <tr>
-                <td colSpan={4} className="p-8 text-center text-gray-500 font-medium">
+                <td colSpan={4} className={`p-8 text-center font-medium ${isDark ? "text-slate-400" : "text-gray-500"}`}>
                   No hay préstamos registrados
                 </td>
               </tr>
