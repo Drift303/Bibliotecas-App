@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import api from "../api";
 import DashboardLayout from "../components/DashboardLayout";
+import { useTheme } from "../context/ThemeContext";
+import { Plus, Edit2, Trash2, AlertCircle, CheckCircle } from "lucide-react";
 
 // Interfaces alineadas a tus esquemas híbridos de Prisma
 interface Book {
@@ -12,6 +14,7 @@ interface Book {
 }
 
 export default function Inventory() {
+  const { isDark } = useTheme();
   const [books, setBooks] = useState<Book[]>([]);
   const [search, setSearch] = useState("");
   const [showForm, setShowForm] = useState(false);
@@ -183,19 +186,22 @@ export default function Inventory() {
 
   return (
     <DashboardLayout>
-      <div className="flex justify-between items-center mb-8">
+      <div className="flex flex-col md:flex-row md:justify-between md:items-center mb-8 gap-4">
         <div>
-          <h1 className="text-4xl font-bold text-[#1E3A5F]">Inventario de Libros</h1>
+          <h1 className={`text-4xl font-bold ${isDark ? "text-blue-400" : "text-[#1E3A5F]"}`}>
+            Inventario de Libros
+          </h1>
           {statusMessage && (
             <p
-              className={`text-sm mt-1 font-medium ${
+              className={`text-sm mt-2 font-medium flex items-center gap-2 ${
                 statusType === "error"
-                  ? "text-red-600"
+                  ? isDark ? "text-red-400" : "text-red-600"
                   : statusType === "ok"
-                  ? "text-green-600"
-                  : "text-blue-600"
+                  ? isDark ? "text-green-400" : "text-green-600"
+                  : isDark ? "text-blue-400" : "text-blue-600"
               }`}
             >
+              {statusType === "error" ? <AlertCircle size={16} /> : <CheckCircle size={16} />}
               {statusMessage}
             </p>
           )}
@@ -203,9 +209,13 @@ export default function Inventory() {
 
         <button
           onClick={handleAddBook}
-          className="bg-[#1E3A5F] text-white px-5 py-3 rounded-xl transition-all duration-300 hover:bg-[#3B82F6] hover:shadow-lg hover:-translate-y-1"
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all ${
+            isDark
+              ? "bg-blue-600 text-white hover:bg-blue-700"
+              : "bg-[#1E3A5F] text-white hover:bg-[#2d5a8e]"
+          }`}
         >
-          + Nuevo Libro
+          <Plus size={20} /> Nuevo Libro
         </button>
       </div>
 
@@ -215,20 +225,37 @@ export default function Inventory() {
           placeholder="Buscar libro por título, autor o ISBN..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="w-full border border-[#E5E7EB] rounded-xl p-3 shadow-sm focus:outline-none focus:ring-2 focus:ring-[#3B82F6]"
+          className={`w-full px-4 py-2 rounded-lg border transition-colors ${
+            isDark
+              ? "bg-slate-900 border-slate-700 text-white placeholder-slate-500 focus:border-blue-500 focus:outline-none"
+              : "bg-white border-slate-200 text-slate-900 placeholder-slate-500 focus:border-blue-500 focus:outline-none"
+          }`}
         />
       </div>
 
       {/* Formulario */}
       {showForm && (
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-[#E5E7EB] mb-6">
-          <h2 className="text-xl font-semibold mb-4 text-[#1E3A5F]">
+        <div
+          className={`p-6 rounded-lg border mb-6 transition-colors ${
+            isDark
+              ? "bg-slate-900 border-slate-700"
+              : "bg-white border-slate-200"
+          }`}
+        >
+          <h2 className={`text-xl font-semibold mb-4 ${isDark ? "text-white" : "text-[#1E3A5F]"}`}>
             {editingBookId ? "Editar Registro" : "Registrar Nuevo Libro"}
           </h2>
 
           {actionError && (
-            <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg p-3 mb-4">
-              {actionError}
+            <div
+              className={`flex gap-3 items-start p-3 rounded-lg mb-4 border ${
+                isDark
+                  ? "bg-red-900/20 border-red-700 text-red-200"
+                  : "bg-red-50 border-red-200 text-red-700"
+              }`}
+            >
+              <AlertCircle size={16} className="mt-0.5 flex-shrink-0" />
+              <p className="text-sm">{actionError}</p>
             </div>
           )}
 
@@ -238,7 +265,11 @@ export default function Inventory() {
               placeholder="ISBN"
               value={formData.isbn}
               onChange={(e) => setFormData({ ...formData, isbn: e.target.value })}
-              className="border border-[#E5E7EB] p-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#3B82F6]"
+              className={`px-4 py-2 rounded-lg border transition-colors ${
+                isDark
+                  ? "bg-slate-800 border-slate-600 text-white placeholder-slate-400 focus:border-blue-500 focus:outline-none"
+                  : "bg-white border-slate-200 text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none"
+              }`}
             />
 
             <input
@@ -246,7 +277,11 @@ export default function Inventory() {
               placeholder="Título"
               value={formData.title}
               onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-              className="border border-[#E5E7EB] p-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#3B82F6]"
+              className={`px-4 py-2 rounded-lg border transition-colors ${
+                isDark
+                  ? "bg-slate-800 border-slate-600 text-white placeholder-slate-400 focus:border-blue-500 focus:outline-none"
+                  : "bg-white border-slate-200 text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none"
+              }`}
             />
 
             <input
@@ -254,37 +289,41 @@ export default function Inventory() {
               placeholder="Autor"
               value={formData.author}
               onChange={(e) => setFormData({ ...formData, author: e.target.value })}
-              className="border border-[#E5E7EB] p-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#3B82F6]"
+              className={`px-4 py-2 rounded-lg border transition-colors ${
+                isDark
+                  ? "bg-slate-800 border-slate-600 text-white placeholder-slate-400 focus:border-blue-500 focus:outline-none"
+                  : "bg-white border-slate-200 text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none"
+              }`}
             />
 
             <select
               value={formData.status}
               onChange={(e) => setFormData({ ...formData, status: e.target.value })}
-              className="border border-[#E5E7EB] p-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#3B82F6]"
+              className={`px-4 py-2 rounded-lg border transition-colors ${
+                isDark
+                  ? "bg-slate-800 border-slate-600 text-white focus:border-blue-500 focus:outline-none"
+                  : "bg-white border-slate-200 text-slate-900 focus:border-blue-500 focus:outline-none"
+              }`}
             >
               <option>Disponible</option>
               <option>Prestado</option>
             </select>
           </div>
 
-          {/* PRÓXIMAMENTE: CÓDIGO DE BARRAS */}
-          <div className="mt-6 p-3 bg-yellow-50 rounded-lg border border-yellow-200">
-            <p className="text-sm text-yellow-700 font-medium">Próximamente: Código de Barras</p>
-          </div>
-          <button className="w-full mt-2 border border-yellow-300 text-yellow-700 px-4 py-2 rounded-lg transition-colors hover:bg-yellow-50 font-medium">
-            escaneo 
-          </button>
-
-          <div className="flex gap-3 mt-4">
+          <div className="flex gap-3 mt-6">
             <button
               onClick={handleSaveBook}
-              className="bg-green-600 text-white px-5 py-2 rounded-xl transition-all duration-300 hover:shadow-md hover:-translate-y-1"
+              className="px-4 py-2 rounded-lg bg-green-600 text-white hover:bg-green-700 font-medium transition-all"
             >
               Guardar
             </button>
             <button
               onClick={() => setShowForm(false)}
-              className="bg-gray-500 text-white px-5 py-2 rounded-xl transition-all duration-300 hover:shadow-md hover:-translate-y-1"
+              className={`px-4 py-2 rounded-lg font-medium transition-all ${
+                isDark
+                  ? "bg-slate-700 text-white hover:bg-slate-600"
+                  : "bg-slate-200 text-slate-900 hover:bg-slate-300"
+              }`}
             >
               Cancelar
             </button>
@@ -294,56 +333,114 @@ export default function Inventory() {
 
       {/* Vista de Carga */}
       {loading ? (
-        <div className="text-center py-10 text-gray-500 animate-pulse">Cargando inventario...</div>
+        <div className={`text-center py-10 font-medium ${isDark ? "text-slate-400" : "text-slate-500"}`}>
+          Cargando inventario...
+        </div>
       ) : books.length === 0 && statusType === "error" ? (
-        <div className="bg-red-50 border border-red-200 text-red-700 rounded-2xl p-6 text-center">
+        <div
+          className={`rounded-lg p-6 text-center border ${
+            isDark
+              ? "bg-red-900/20 border-red-700 text-red-200"
+              : "bg-red-50 border-red-200 text-red-700"
+          }`}
+        >
           No se pudieron cargar los libros. {statusMessage}
         </div>
       ) : (
-        <div className="bg-white rounded-2xl shadow-sm border border-[#E5E7EB] overflow-hidden">
+        <div
+          className={`rounded-lg border overflow-hidden ${
+            isDark
+              ? "bg-slate-900 border-slate-700"
+              : "bg-white border-slate-200"
+          }`}
+        >
           <table className="w-full">
-            <thead className="bg-[#1E3A5F] text-white">
+            <thead
+              className={`${
+                isDark
+                  ? "bg-slate-800 border-slate-700 text-slate-100"
+                  : "bg-slate-100 border-slate-200 text-slate-900"
+              } border-b`}
+            >
               <tr>
-                <th className="p-3 text-left">ISBN</th>
-                <th className="p-3 text-left">Título</th>
-                <th className="p-3 text-left">Autor</th>
-                <th className="p-3 text-left">Estado</th>
-                <th className="p-3 text-center">Acciones</th>
+                <th className="p-3 text-left font-semibold">ISBN</th>
+                <th className="p-3 text-left font-semibold">Título</th>
+                <th className="p-3 text-left font-semibold">Autor</th>
+                <th className="p-3 text-left font-semibold">Estado</th>
+                <th className="p-3 text-center font-semibold">Acciones</th>
               </tr>
             </thead>
             <tbody>
-              {filteredBooks.map((book) => (
-                <tr key={book.id} className="border-b hover:bg-[#F8F9FB] transition-colors duration-200">
-                  <td className="p-3 font-mono text-sm">{book.isbn}</td>
-                  <td className="p-3 font-medium text-[#0F172A]">{book.title}</td>
-                  <td className="p-3 text-gray-600">{book.author}</td>
+              {filteredBooks.map((book, idx) => (
+                <tr
+                  key={book.id}
+                  className={`border-b transition-colors ${
+                    isDark
+                      ? idx % 2 === 0
+                        ? "bg-slate-900 hover:bg-slate-800"
+                        : "bg-slate-800/50 hover:bg-slate-800"
+                      : idx % 2 === 0
+                      ? "bg-white hover:bg-slate-50"
+                      : "bg-slate-50 hover:bg-slate-100"
+                  }`}
+                >
+                  <td className={`p-3 font-mono text-sm ${isDark ? "text-slate-300" : "text-slate-700"}`}>
+                    {book.isbn}
+                  </td>
+                  <td className={`p-3 font-medium ${isDark ? "text-white" : "text-slate-900"}`}>
+                    {book.title}
+                  </td>
+                  <td className={`p-3 ${isDark ? "text-slate-400" : "text-slate-600"}`}>{book.author}</td>
                   <td className="p-3">
                     <span
-                      className={`px-3 py-1 rounded-full text-sm font-medium ${
-                        book.status === "Disponible" ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"
+                      className={`px-3 py-1 rounded-full text-sm font-medium inline-block ${
+                        book.status === "Disponible"
+                          ? isDark
+                            ? "bg-green-900/30 text-green-300"
+                            : "bg-green-100 text-green-700"
+                          : isDark
+                          ? "bg-amber-900/30 text-amber-300"
+                          : "bg-amber-100 text-amber-700"
                       }`}
                     >
                       {book.status}
                     </span>
                   </td>
-                  <td className="p-3 text-center space-x-2">
-                    <button
-                      onClick={() => handleEdit(book.id)}
-                      className="bg-[#D4A017] text-white px-3 py-1 rounded-lg transition-all duration-300 hover:shadow-md hover:-translate-y-1"
-                    >
-                      Editar
-                    </button>
-                    <button
-                      onClick={() => handleDelete(book.id)}
-                      className="bg-red-600 text-white px-3 py-1 rounded-lg transition-all duration-300 hover:shadow-md hover:-translate-y-1"
-                    >
-                      Eliminar
-                    </button>
+                  <td className="p-3 text-center">
+                    <div className="flex items-center justify-center gap-2">
+                      <button
+                        onClick={() => handleEdit(book.id)}
+                        className={`p-2 rounded-lg transition-all ${
+                          isDark
+                            ? "text-amber-400 hover:bg-amber-900/30"
+                            : "text-amber-600 hover:bg-amber-50"
+                        }`}
+                        title="Editar"
+                      >
+                        <Edit2 size={18} />
+                      </button>
+                      <button
+                        onClick={() => handleDelete(book.id)}
+                        className={`p-2 rounded-lg transition-all ${
+                          isDark
+                            ? "text-red-400 hover:bg-red-900/30"
+                            : "text-red-600 hover:bg-red-50"
+                        }`}
+                        title="Eliminar"
+                      >
+                        <Trash2 size={18} />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
+          {filteredBooks.length === 0 && (
+            <div className={`p-8 text-center ${isDark ? "text-slate-400" : "text-slate-500"}`}>
+              No hay libros para mostrar.
+            </div>
+          )}
         </div>
       )}
     </DashboardLayout>

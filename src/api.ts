@@ -1,11 +1,15 @@
 import axios from "axios";
 
 // Lee la URL del backend desde la variable de entorno de Vite.
-const rawBaseUrl =
-  import.meta.env.VITE_API_URL || "https://loyal-nature-production-26de.up.railway.app";
+// En desarrollo usa localhost por defecto; en producción se espera que VITE_API_URL esté definido.
+const rawBaseUrl = import.meta.env.VITE_API_URL?.trim();
 
 // Limpia automáticamente /api finales o barras extras para evitar rutas rotas
-const BASE_URL = rawBaseUrl.replace(/\/api\/?$/, "").replace(/\/$/, "");
+const BASE_URL = rawBaseUrl
+  ? rawBaseUrl.replace(/\/api\/?$/, "").replace(/\/$/, "")
+  : import.meta.env.DEV
+    ? "http://localhost:3001"
+    : "";
 
 // Instancia centralizada de Axios para todo el proyecto
 const api = axios.create({
