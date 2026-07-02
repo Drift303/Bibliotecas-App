@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import api from "../api";
 import BookCard from "../cards/BookCard";
 import LogoutButton from "../components/LogoutButton";
+import { ThemeToggleButton } from "../components/ui/ThemeToggleButton";
 
 interface Book {
   id: string | number;
@@ -79,36 +80,42 @@ export default function Catalog() {
   }, [books, searchText]);
 
   return (
-    <div className="p-6">
-      <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+    <div className="relative min-h-screen p-6 md:p-8 transition-colors bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-50 overflow-hidden">
+      {/* Elementos decorativos tipo Mac (blurs dinámicos) */}
+      <div className="fixed top-0 left-0 w-[600px] h-[600px] bg-blue-500/10 dark:bg-blue-600/10 rounded-full blur-3xl -translate-x-1/2 -translate-y-1/2 pointer-events-none z-0" />
+      <div className="fixed bottom-0 right-0 w-[800px] h-[800px] bg-indigo-500/10 dark:bg-indigo-600/10 rounded-full blur-3xl translate-x-1/3 translate-y-1/3 pointer-events-none z-0" />
+
+      <div className="relative z-10 max-w-7xl mx-auto">
+        <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-[#1E3A5F] mb-2">
+          <h1 className="text-3xl font-extrabold text-slate-900 dark:text-white mb-2 tracking-tight">
             Catálogo de Libros
           </h1>
           {statusMessage && (
             <p
               className={`text-sm font-medium ${
                 statusType === "error"
-                  ? "text-red-600"
+                  ? "text-red-600 dark:text-red-400"
                   : statusType === "ok"
-                  ? "text-green-600"
-                  : "text-blue-600"
+                  ? "text-emerald-600 dark:text-emerald-400"
+                  : "text-blue-600 dark:text-blue-400"
               }`}
             >
               {statusMessage}
             </p>
           )}
-          <p className="text-sm text-slate-600 max-w-2xl mt-2">
+          <p className="text-sm text-slate-600 dark:text-slate-400 max-w-2xl mt-2">
             Explora la biblioteca, encuentra libros por título, autor o ISBN, y visualiza su estado al instante.
           </p>
         </div>
 
         <div className="w-full md:w-80 flex flex-col gap-3">
-          <div className="flex justify-end">
+          <div className="flex justify-end items-center gap-3">
+            <ThemeToggleButton />
             <LogoutButton />
           </div>
 
-          <label className="block text-sm font-medium text-slate-700 mb-2" htmlFor="search">
+          <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2" htmlFor="search">
             Buscar libro
           </label>
           <div className="relative">
@@ -118,9 +125,9 @@ export default function Catalog() {
               onChange={(event) => setSearchText(event.target.value)}
               type="text"
               placeholder="Ej. Clean Code o Robert C. Martin"
-              className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 pr-12 text-sm text-slate-900 shadow-sm outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+              className="w-full rounded-2xl border border-white/50 dark:border-slate-700 bg-white/60 dark:bg-slate-900/60 backdrop-blur-md px-4 py-3 pr-12 text-sm text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 shadow-sm shadow-slate-200/50 dark:shadow-black/50 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/50"
             />
-            <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 text-sm">
+            <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 text-sm">
               Análisis🔎
             </span>
           </div>
@@ -129,27 +136,28 @@ export default function Catalog() {
 
       {/* Estado de carga */}
       {loading ? (
-        <div className="text-center py-10 text-gray-500 animate-pulse">Cargando catálogo...</div>
+        <div className="text-center py-10 text-slate-500 dark:text-slate-400 font-medium animate-pulse">Cargando catálogo...</div>
       ) : books.length === 0 && statusType === "error" ? (
-        <div className="bg-red-50 border border-red-200 text-red-700 rounded-2xl p-6 text-center">
+        <div className="bg-red-50/80 dark:bg-red-900/30 backdrop-blur-md border border-red-200 dark:border-red-900/50 text-red-700 dark:text-red-400 rounded-3xl p-6 text-center font-medium shadow-sm">
           No se pudieron cargar los libros. {statusMessage}
         </div>
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-3">
           {filteredBooks.length > 0 ? (
             filteredBooks.map((book) => (
               <BookCard key={book.id} book={book} />
             ))
           ) : (
-            <div className="col-span-full rounded-3xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center text-slate-700">
-              <p className="text-lg font-semibold">No se encontraron libros</p>
-              <p className="mt-2 text-sm text-slate-500">
+            <div className="col-span-full rounded-3xl border border-dashed border-slate-300 dark:border-slate-700 bg-white/40 dark:bg-slate-900/40 backdrop-blur-md p-8 text-center text-slate-700 dark:text-slate-300">
+              <p className="text-lg font-bold">No se encontraron libros</p>
+              <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
                 Prueba con otro título, autor, ISBN o palabra clave.
               </p>
             </div>
           )}
         </div>
       )}
+      </div>
     </div>
   );
 }

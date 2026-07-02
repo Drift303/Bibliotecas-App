@@ -43,16 +43,16 @@ export default function Sidebar() {
   ];
 
   return (
-    <aside className={`w-64 text-white min-h-screen shadow-xl flex flex-col transition-colors ${
-      isDark ? "bg-slate-900 border-r border-slate-700" : "bg-[#1E3A5F]"
+    <aside className={`w-64 min-h-screen flex flex-col transition-all duration-300 border-r backdrop-blur-2xl ${
+      isDark ? "bg-slate-950/60 border-slate-800/50 text-slate-50 shadow-[4px_0_24px_rgba(0,0,0,0.2)]" : "bg-white/60 border-white/50 text-slate-900 shadow-[4px_0_24px_rgba(0,0,0,0.02)]"
     }`}>
       {/* Header con Ícono + "Biblioteca" + Nombre de usuario */}
-      <div className={`p-6 border-b transition-colors ${isDark ? "border-slate-700" : "border-white/20"}`}>
+      <div className={`p-6 border-b transition-colors ${isDark ? "border-slate-800" : "border-slate-200"}`}>
         <div className="flex items-center gap-3">
           <BookIcon />
-          <span className="text-2xl font-bold tracking-tight">Biblioteca</span>
+          <span className="text-xl font-bold tracking-tight">Biblioteca</span>
         </div>
-        <div className={`text-sm mt-2 truncate font-medium ${isDark ? "text-slate-400" : "text-white/70"}`}>
+        <div className={`text-sm mt-2 truncate font-medium ${isDark ? "text-slate-400" : "text-slate-500"}`}>
           {userName}
         </div>
       </div>
@@ -67,18 +67,18 @@ export default function Sidebar() {
             <Link
               key={link.to}
               to={link.to}
-              className={`px-4 py-3 rounded-xl transition-all duration-300 flex items-center gap-3 ${
+              className={`px-4 py-2.5 rounded-lg transition-all duration-200 flex items-center gap-3 text-sm font-medium ${
                 isActive
                   ? isDark
-                    ? "bg-blue-600 text-white font-bold shadow-md"
-                    : "bg-blue-100 text-[#1E3A5F] font-bold shadow-md"
+                    ? "bg-slate-800 text-white shadow-sm"
+                    : "bg-slate-100 text-slate-900 shadow-sm"
                   : isDark
-                    ? "hover:bg-slate-800 hover:translate-x-2 text-slate-200"
-                    : "hover:bg-[#3B82F6]/30 hover:translate-x-2 text-white/90"
+                    ? "text-slate-400 hover:bg-slate-800 hover:text-white"
+                    : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
               }`}
             >
               {/* Renderizamos el icono al lado del texto */}
-              <Icon className={`w-5 h-5 ${isActive ? "text-blue-400" : "text-blue-400"}`} />
+              <Icon className={`w-5 h-5 ${isActive ? (isDark ? "text-white" : "text-slate-900") : "text-inherit"}`} />
               <span>{link.label}</span>
             </Link>
           );
@@ -86,8 +86,12 @@ export default function Sidebar() {
       </nav>
 
       {/* Botón de Cerrar Sesión Rojo al final */}
-      <div className={`p-4 border-t transition-colors ${isDark ? "border-slate-700" : "border-white/20"}`}>
-        <LogoutButton className="w-full py-3 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-xl transition duration-300 text-center block" />
+      <div className={`p-4 border-t transition-colors mt-auto ${isDark ? "border-slate-800" : "border-slate-200"}`}>
+        <LogoutButton className={`w-full py-2.5 rounded-lg text-sm font-medium transition-colors text-center flex items-center justify-center gap-2 border ${
+          isDark 
+            ? "border-red-900/50 text-red-400 hover:bg-red-950/50" 
+            : "border-red-200 text-red-600 hover:bg-red-50"
+        }`} />
       </div>
     </aside>
   );
