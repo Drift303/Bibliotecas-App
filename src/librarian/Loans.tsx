@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import api from "../api";
 import DashboardLayout from "../components/DashboardLayout";
+import { useTheme } from "../context/ThemeContext";
+import { AlertCircle, CheckCircle } from "lucide-react";
 
 interface Loan {
   id: string;
@@ -27,6 +29,7 @@ const money = new Intl.NumberFormat("es-MX", {
 });
 
 export default function Loans() {
+  const { isDark } = useTheme();
   const [loans, setLoans] = useState<Loan[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusMessage, setStatusMessage] = useState("");
@@ -89,58 +92,100 @@ export default function Loans() {
 
   return (
     <DashboardLayout>
-      <h1 className="text-4xl font-bold mb-8 text-[#1E3A5F]">
+      <h1 className={`text-4xl font-bold mb-8 ${isDark ? "text-blue-400" : "text-[#1E3A5F]"}`}>
         Historial de Préstamos
       </h1>
 
       {statusMessage && (
-        <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-4 mb-6 font-medium">
+        <div
+          className={`flex gap-3 items-start p-4 rounded-lg mb-6 font-medium border ${
+            isDark
+              ? "bg-red-900/20 border-red-700 text-red-200"
+              : "bg-red-50 border-red-200 text-red-700"
+          }`}
+        >
+          <AlertCircle size={20} className="flex-shrink-0 mt-0.5" />
           {statusMessage}
         </div>
       )}
 
       <div className="grid md:grid-cols-3 gap-4 mb-6">
-        <SummaryCard label="Préstamos Activos" value={activeLoansCount} tone="text-[#1E3A5F]" />
-        <SummaryCard label="Préstamos Vencidos" value={expiredLoansCount} tone="text-red-600" />
-        <SummaryCard label="Multas Pendientes" value={money.format(totalFines)} tone="text-[#D4A017]" />
+        <SummaryCard label="Préstamos Activos" value={loans.filter((loan) => loan.status === "Activo").length} isDark={isDark} tone="blue" />
+        <SummaryCard label="Préstamos Vencidos" value={loans.filter((loan) => loan.status === "Vencido").length} isDark={isDark} tone="red" />
+        <SummaryCard
+          label="Multas Pendientes"
+          value={money.format(loans.reduce((total, loan) => total + loan.fine, 0))}
+          isDark={isDark}
+          tone="amber"
+        />
       </div>
 
-      <div className="bg-white rounded-2xl shadow-sm border border-[#E5E7EB] overflow-hidden">
+      <div
+        className={`rounded-lg border overflow-hidden ${
+          isDark
+            ? "bg-slate-900 border-slate-700"
+            : "bg-white border-slate-200"
+        }`}
+      >
         <table className="w-full">
-          <thead className="bg-[#1E3A5F] text-white">
+          <thead
+            className={`${
+              isDark
+                ? "bg-slate-800 border-slate-700 text-slate-100"
+                : "bg-slate-100 border-slate-200 text-slate-900"
+            } border-b`}
+          >
             <tr>
-              <th className="p-3 text-left">Alumno</th>
-              <th className="p-3 text-left">Libro</th>
-              <th className="p-3 text-left">Prestado</th>
-              <th className="p-3 text-left">Vence</th>
-              <th className="p-3 text-left">Estado</th>
-              <th className="p-3 text-center">Acción</th>
+              <th className="p-3 text-left font-semibold">Alumno</th>
+              <th className="p-3 text-left font-semibold">Libro</th>
+              <th className="p-3 text-left font-semibold">Prestado</th>
+              <th className="p-3 text-left font-semibold">Vence</th>
+              <th className="p-3 text-left font-semibold">Estado</th>
+              <th className="p-3 text-center font-semibold">Acción</th>
             </tr>
           </thead>
 
           <tbody>
-            {loans.map((loan) => (
-              <tr key={loan.id} className="border-b hover:bg-[#F8F9FB] transition-colors duration-200">
-                <td className="p-3 font-medium text-gray-800">{loan.student}</td>
-                <td className="p-3 text-gray-600">{loan.book}</td>
-                <td className="p-3 text-gray-600">{loan.loanDate}</td>
-                <td className="p-3 text-gray-600">{loan.dueDate}</td>
+            {loans.map((loan, idx) => (
+              <tr
+                key={loan.id}
+                className={`border-b transition-colors ${
+                  isDark
+                    ? idx % 2 === 0
+                      ? "bg-slate-900 hover:bg-slate-800"
+                      : "bg-slate-800/50 hover:bg-slate-800"
+                    : idx % 2 === 0
+                    ? "bg-white hover:bg-slate-50"
+                    : "bg-slate-50 hover:bg-slate-100"
+                }`}
+              >
+                <td className={`p-3 font-medium ${isDark ? "text-white" : "text-slate-900"}`}>
+                  {loan.student}
+                </td>
+                <td className={`p-3 ${isDark ? "text-slate-400" : "text-slate-600"}`}>
+                  {loan.book}
+                </td>
+                <td className={`p-3 ${isDark ? "text-slate-400" : "text-slate-600"}`}>
+                  {loan.loanDate}
+                </td>
+                <td className={`p-3 ${isDark ? "text-slate-400" : "text-slate-600"}`}>
+                  {loan.dueDate}
+                </td>
                 <td className="p-3">
-                  <span className={`px-3 py-1 rounded-full text-sm font-medium ${statusClass(loan.status)}`}>
+                  <span className={`px-3 py-1 rounded-full text-sm font-medium inline-block ${statusClass(loan.status, isDark)}`}>
                     {loan.status}
                   </span>
                 </td>
                 <td className="p-3 text-center">
-                  {/* REQUERIMIENTO: Botón devolución SOLO en préstamos activos */}
                   {loan.status === "Activo" ? (
                     <button
                       onClick={() => initiateReturnFlow(loan)}
-                      className="bg-green-600 text-white px-4 py-1.5 rounded-lg text-sm font-semibold transition-all duration-300 hover:bg-green-700 hover:shadow-md transform hover:-translate-y-0.5"
+                      className="bg-green-600 text-white px-4 py-1.5 rounded-lg text-sm font-semibold transition-all duration-300 hover:bg-green-700"
                     >
                       Devolver
                     </button>
                   ) : (
-                    <span className="text-gray-400 text-sm italic">—</span>
+                    <span className={`text-sm italic ${isDark ? "text-slate-500" : "text-slate-400"}`}>—</span>
                   )}
                 </td>
               </tr>
@@ -148,7 +193,7 @@ export default function Loans() {
 
             {!loading && loans.length === 0 && (
               <tr>
-                <td colSpan={6} className="p-8 text-center text-gray-500 font-medium">
+                <td colSpan={6} className={`p-8 text-center font-medium ${isDark ? "text-slate-400" : "text-slate-500"}`}>
                   No hay préstamos registrados.
                 </td>
               </tr>
@@ -156,7 +201,7 @@ export default function Loans() {
 
             {loading && (
               <tr>
-                <td colSpan={6} className="p-8 text-center text-gray-500 font-medium">
+                <td colSpan={6} className={`p-8 text-center font-medium ${isDark ? "text-slate-400" : "text-slate-500"}`}>
                   Cargando préstamos...
                 </td>
               </tr>
@@ -165,38 +210,47 @@ export default function Loans() {
         </table>
       </div>
 
-      {/* REQUERIMIENTO: Modal de devolución con overlay oscuro y tarjeta centrada */}
+      {/* Modal de devolución */}
       {activeReturn && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-6 z-50 animate-fadeIn">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 transform transition-all">
-            <h2 className="text-2xl font-bold text-[#1E3A5F] mb-5 border-b pb-2">
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-6 z-50">
+          <div
+            className={`rounded-lg w-full max-w-md p-6 border ${
+              isDark
+                ? "bg-slate-900 border-slate-700"
+                : "bg-white border-slate-200"
+            }`}
+          >
+            <h2 className={`text-2xl font-bold mb-5 pb-2 border-b ${isDark ? "text-white border-slate-700" : "text-[#1E3A5F] border-slate-200"}`}>
               Procesar Devolución
             </h2>
-            
+
             <div className="space-y-3 mb-6">
-              <p className="text-gray-700">
-                <span className="font-semibold text-gray-900">Alumno:</span> {activeReturn.student}
+              <p className={isDark ? "text-slate-300" : "text-slate-700"}>
+                <span className="font-semibold">Alumno:</span> {activeReturn.student}
               </p>
-              <p className="text-gray-700">
-                <span className="font-semibold text-gray-900">Libro:</span> {activeReturn.book}
+              <p className={isDark ? "text-slate-300" : "text-slate-700"}>
+                <span className="font-semibold">Libro:</span> {activeReturn.book}
               </p>
-              <p className="text-gray-700">
-                <span className="font-semibold text-gray-900">Multa acumulada:</span>{" "}
-                <span className={activeReturn.fine > 0 ? "text-red-600 font-bold" : "text-green-600 font-semibold"}>
+              <p className={isDark ? "text-slate-300" : "text-slate-700"}>
+                <span className="font-semibold">Multa acumulada:</span>{" "}
+                <span className={activeReturn.fine > 0 ? (isDark ? "text-red-400" : "text-red-600") + " font-bold" : (isDark ? "text-green-400" : "text-green-600") + " font-semibold"}>
                   {money.format(activeReturn.fine)}
                 </span>
               </p>
             </div>
 
-            {/* Selector de estado físico */}
             <div className="mb-6">
-              <label className="block text-sm font-semibold text-gray-700 mb-2">
+              <label className={`block text-sm font-semibold mb-2 ${isDark ? "text-slate-300" : "text-slate-700"}`}>
                 Estado Físico del Libro al Entregar:
               </label>
               <select
                 value={bookCondition}
                 onChange={(e) => setBookCondition(e.target.value)}
-                className="w-full border border-gray-300 rounded-xl p-2.5 focus:ring-2 focus:ring-blue-300 focus:border-[#1E3A5F] transition"
+                className={`w-full px-3 py-2 rounded-lg border transition-colors ${
+                  isDark
+                    ? "bg-slate-800 border-slate-600 text-white focus:border-blue-500 focus:outline-none"
+                    : "bg-white border-slate-200 text-slate-900 focus:border-blue-500 focus:outline-none"
+                }`}
               >
                 <option value="Excelente">Excelente (Como nuevo)</option>
                 <option value="Bueno">Bueno (Signos de uso normales)</option>
@@ -209,7 +263,11 @@ export default function Loans() {
                 type="button"
                 disabled={submittingReturn}
                 onClick={() => setActiveReturn(null)}
-                className="w-1/2 border border-gray-300 text-gray-700 px-4 py-2.5 rounded-xl font-medium hover:bg-gray-50 transition"
+                className={`w-1/2 px-4 py-2.5 rounded-lg font-medium transition-all ${
+                  isDark
+                    ? "border border-slate-600 text-slate-300 hover:bg-slate-800"
+                    : "border border-slate-300 text-slate-700 hover:bg-slate-50"
+                }`}
               >
                 Cancelar
               </button>
@@ -217,7 +275,7 @@ export default function Loans() {
                 type="button"
                 disabled={submittingReturn}
                 onClick={submitReturn}
-                className="w-1/2 bg-green-600 text-white px-4 py-2.5 rounded-xl font-semibold hover:bg-green-700 transition disabled:opacity-50"
+                className="w-1/2 bg-green-600 text-white px-4 py-2.5 rounded-lg font-semibold hover:bg-green-700 transition disabled:opacity-50"
               >
                 {submittingReturn ? "Procesando..." : "Confirmar Entrega"}
               </button>
@@ -250,25 +308,41 @@ function formatDate(value: string | null | undefined) {
   return new Date(value).toLocaleDateString("es-MX");
 }
 
-function statusClass(status: Loan["status"]) {
-  if (status === "Activo") return "bg-green-100 text-green-700";
-  if (status === "Vencido") return "bg-red-100 text-red-700";
-  return "bg-blue-100 text-blue-700";
+function statusClass(status: Loan["status"], isDark: boolean) {
+  if (status === "Activo") return isDark ? "bg-green-900/30 text-green-300" : "bg-green-100 text-green-700";
+  if (status === "Vencido") return isDark ? "bg-red-900/30 text-red-300" : "bg-red-100 text-red-700";
+  return isDark ? "bg-blue-900/30 text-blue-300" : "bg-blue-100 text-blue-700";
 }
 
 function SummaryCard({
   label,
   value,
+  isDark,
   tone,
 }: {
   label: string;
   value: number | string;
-  tone: string;
+  isDark: boolean;
+  tone: "blue" | "red" | "amber";
 }) {
+  const toneClasses = {
+    blue: isDark ? "text-blue-400" : "text-blue-600",
+    red: isDark ? "text-red-400" : "text-red-600",
+    amber: isDark ? "text-amber-400" : "text-amber-600",
+  };
+
   return (
-    <div className="bg-white p-5 rounded-2xl shadow-sm border border-[#E5E7EB]">
-      <h2 className="text-sm font-medium text-gray-500 mb-1">{label}</h2>
-      <p className={`text-3xl font-bold ${tone}`}>{value}</p>
+    <div
+      className={`p-5 rounded-lg border transition-colors ${
+        isDark
+          ? "bg-slate-900 border-slate-700"
+          : "bg-white border-slate-200"
+      }`}
+    >
+      <h2 className={`text-sm font-medium mb-1 ${isDark ? "text-slate-400" : "text-slate-500"}`}>
+        {label}
+      </h2>
+      <p className={`text-3xl font-bold ${toneClasses[tone]}`}>{value}</p>
     </div>
   );
 }

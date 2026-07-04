@@ -2,6 +2,7 @@ const prisma = require('../config/prismaClient');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const { createUserSchema, updateUserSchema } = require('../validators/userValidators');
+const { sendTempPasswordEmail } = require('../services/emailService');
 
 const hashPassword = async (password) => {
   const salt = await bcrypt.genSalt(10);
@@ -82,6 +83,21 @@ const createUser = async (req, res) => {
     const responseData = { ...userWithoutPassword };
     if (tempPassword) {
       responseData.tempPassword = tempPassword;
+
+      // Enviar correo con credenciales al nuevo usuario via Resend.
+      // No bloqueamos la respuesta si falla el correo — el usuario se crea igual
+      // y la contraseña sigue mostrándose en pantalla como respaldo.
+      sendTempPasswordEmail({
+        name: created.name,
+        email: created.email,
+        tempPassword,
+      }).then(result => {
+        if (!result.success) {
+          console.warn('No se pudo enviar correo de bienvenida:', result.error);
+        } else {
+          console.log('Correo de bienvenida enviado a:', created.email);
+        }
+      });
     }
 
     res.status(201).json({ success: true, data: responseData });
@@ -109,7 +125,6 @@ const updateUser = async (req, res) => {
     if (data.email) updateData.email = data.email.toLowerCase();
     if (data.role) updateData.role = data.role;
     if (data.studentId) {
-      // check collision
       const other = await prisma.user.findFirst({ where: { tenantId, studentId: data.studentId, NOT: { id: userId } } });
       if (other) return res.status(400).json({ error: 'studentId already exists in tenant' });
       updateData.studentId = data.studentId.trim();
