@@ -7,6 +7,7 @@ import Loans from "../librarian/Loans";
 import QuickLoan from "../librarian/QuickLoan";
 import Students from "../librarian/Students";
 import Login from "../pages/Login";
+import NotFound from "../pages/NotFound";
 import Catalog from "../student/Catalog";
 import Billing from "../superadmin/Billing";
 import Schools from "../superadmin/Schools";
@@ -27,6 +28,7 @@ export default function AppRoutes() {
         <Route path="/schools" element={<ProtectedRoute><Schools /></ProtectedRoute>} />
         <Route path="/billing" element={<ProtectedRoute><Billing /></ProtectedRoute>} />
         <Route path="/loans" element={<ProtectedRoute><Loans /></ProtectedRoute>} />
+        <Route path="*" element={<NotFound />} /> 
       </Routes>
     </BrowserRouter>
   );
