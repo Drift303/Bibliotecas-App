@@ -16,6 +16,8 @@ interface Book {
   statusPhysical: string;
   observation?: string;
   validator?: string;
+  status?: string;
+  available?: boolean;
 }
 
 export default function AnnualCheck() {
@@ -58,8 +60,8 @@ export default function AnnualCheck() {
   const [newBookError, setNewBookError] = useState("");
   const [savingNewBook, setSavingNewBook] = useState(false);
 
-  // Filter mode: "all", "missing", "found"
-  const [filterMode, setFilterMode] = useState<"all" | "missing" | "found">("all");
+  // Filter mode
+  const [filterMode, setFilterMode] = useState<"all" | "missing" | "found" | "loaned" | "dropped">("all");
 
   useEffect(() => {
     loadBooks();
@@ -84,6 +86,8 @@ export default function AnnualCheck() {
         statusPhysical: b.statusPhysical || "GOOD",
         observation: b.observation || "",
         validator: b.validator || "",
+        status: b.status || "AVAILABLE",
+        available: b.available !== undefined ? b.available : true,
       }));
       setBooks(normalizedBooks);
     } catch (err) {
@@ -206,47 +210,51 @@ export default function AnnualCheck() {
     handleProcessCode(barcode);
   });
 
-  const handleManualSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (search.trim()) {
-      handleProcessCode(search);
-    }
-  };
+  const isLoaned = (b: Book) => b.status === "LOANED" || b.available === false;
+  const isDropped = (b: Book) => b.statusPhysical === "LOST" || b.statusPhysical === "DISCARDED";
 
-  const missingBooks = books.filter(b => !foundBookIds.has(b.id));
-  const foundBooksList = books.filter(b => foundBookIds.has(b.id));
+  const loanedBooksList = books.filter(b => isLoaned(b) && !isDropped(b));
+  const droppedBooksList = books.filter(b => isDropped(b));
+  const targetBooks = books.filter(b => !isLoaned(b) && !isDropped(b));
+
+  const missingBooks = targetBooks.filter(b => !foundBookIds.has(b.id));
+  const foundBooksList = targetBooks.filter(b => foundBookIds.has(b.id));
 
   const exportAuditToExcel = () => {
-    // 1. Preparar datos para Encontrados
+    // 1. Preparar datos
     const foundData = foundBooksList.map(b => ({
-      ISBN: b.isbn,
-      Título: b.title,
-      Autor: b.author,
-      "Estado Físico": b.statusPhysical,
-      Observaciones: b.observation || "Ninguna",
-      Validador: b.validator || "N/A"
+      ISBN: b.isbn, Título: b.title, Autor: b.author,
+      "Estado Físico": b.statusPhysical, Observaciones: b.observation || "Ninguna", Validador: b.validator || "N/A"
     }));
 
-    // 2. Preparar datos para Faltantes
     const missingData = missingBooks.map(b => ({
-      ISBN: b.isbn,
-      Título: b.title,
-      Autor: b.author,
-      "Estado Físico": b.statusPhysical,
-      "Última Observación": b.observation || "Ninguna"
+      ISBN: b.isbn, Título: b.title, Autor: b.author,
+      "Estado Físico": b.statusPhysical, "Última Observación": b.observation || "Ninguna"
     }));
 
-    // 3. Crear el libro de Excel
+    const droppedData = droppedBooksList.map(b => ({
+      ISBN: b.isbn, Título: b.title, Autor: b.author,
+      "Causa de Baja": b.statusPhysical === "LOST" ? "Extraviado" : "Descartado",
+      Observaciones: b.observation || "Ninguna"
+    }));
+
+    const loanedData = loanedBooksList.map(b => ({
+      ISBN: b.isbn, Título: b.title, Autor: b.author,
+      "Estado Físico": b.statusPhysical
+    }));
+
     const wb = XLSX.utils.book_new();
 
-    // 4. Agregar Hojas
     const wsFound = XLSX.utils.json_to_sheet(foundData.length ? foundData : [{ Mensaje: "No se encontraron libros aún" }]);
     const wsMissing = XLSX.utils.json_to_sheet(missingData.length ? missingData : [{ Mensaje: "No hay libros faltantes" }]);
+    const wsDropped = XLSX.utils.json_to_sheet(droppedData.length ? droppedData : [{ Mensaje: "No hay bajas" }]);
+    const wsLoaned = XLSX.utils.json_to_sheet(loanedData.length ? loanedData : [{ Mensaje: "No hay libros prestados" }]);
 
-    XLSX.utils.book_append_sheet(wb, wsFound, "Libros Encontrados");
-    XLSX.utils.book_append_sheet(wb, wsMissing, "Libros Faltantes");
+    XLSX.utils.book_append_sheet(wb, wsFound, "Encontrados");
+    XLSX.utils.book_append_sheet(wb, wsMissing, "Faltantes");
+    XLSX.utils.book_append_sheet(wb, wsDropped, "Bajas");
+    XLSX.utils.book_append_sheet(wb, wsLoaned, "Prestados");
 
-    // 5. Descargar el archivo
     const fecha = new Date().toISOString().split("T")[0];
     XLSX.writeFile(wb, `Auditoria_Inventario_${fecha}.xlsx`);
   };
@@ -254,8 +262,10 @@ export default function AnnualCheck() {
   let displayBooks = books;
   if (filterMode === "found") displayBooks = foundBooksList;
   if (filterMode === "missing") displayBooks = missingBooks;
+  if (filterMode === "loaned") displayBooks = loanedBooksList;
+  if (filterMode === "dropped") displayBooks = droppedBooksList;
 
-  const progressPercentage = books.length === 0 ? 0 : Math.round((foundBooksList.length / books.length) * 100);
+  const progressPercentage = targetBooks.length === 0 ? 0 : Math.round((foundBooksList.length / targetBooks.length) * 100);
 
   return (
     <DashboardLayout>
@@ -301,9 +311,9 @@ export default function AnnualCheck() {
         }`}>
           <div className="flex justify-between items-end mb-2">
             <div>
-              <p className={`text-sm font-medium ${isDark ? "text-slate-400" : "text-slate-500"}`}>Progreso</p>
+              <p className={`text-sm font-medium ${isDark ? "text-slate-400" : "text-slate-500"}`}>Meta de Auditoría</p>
               <p className={`text-3xl font-bold ${isDark ? "text-white" : "text-slate-800"}`}>
-                {foundBooksList.length} <span className="text-lg text-slate-500 font-normal">/ {books.length}</span>
+                {foundBooksList.length} <span className="text-lg text-slate-500 font-normal">/ {targetBooks.length}</span>
               </p>
             </div>
             <div className={`text-xl font-bold ${progressPercentage === 100 ? "text-emerald-500" : isDark ? "text-blue-400" : "text-blue-600"}`}>
@@ -415,7 +425,8 @@ export default function AnnualCheck() {
                         >
                           <option value="GOOD">Buen Estado</option>
                           <option value="DAMAGED">Dañado / Regular</option>
-                          <option value="LOST">Extraviado</option>
+                          <option value="LOST">Extraviado (No físico)</option>
+                          <option value="DISCARDED">Descartado (Baja final)</option>
                         </select>
                       </div>
                       <div>
@@ -497,20 +508,20 @@ export default function AnnualCheck() {
       </div>
 
       {/* Book List Tabs */}
-      <div className={`rounded-t-2xl border-b flex overflow-x-auto ${isDark ? "border-slate-800 bg-slate-900/50" : "border-slate-200 bg-white"}`}>
+      <div className={`rounded-t-2xl border-b flex overflow-x-auto scrollbar-hide ${isDark ? "border-slate-800 bg-slate-900/50" : "border-slate-200 bg-white"}`}>
         <button
           onClick={() => setFilterMode("all")}
-          className={`px-6 py-4 font-medium text-sm whitespace-nowrap transition-colors border-b-2 ${
+          className={`px-5 py-4 font-medium text-sm whitespace-nowrap transition-colors border-b-2 ${
             filterMode === "all"
               ? "border-blue-500 text-blue-600 dark:text-blue-400"
               : "border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
           }`}
         >
-          Todos los Libros ({books.length})
+          Todos ({books.length})
         </button>
         <button
           onClick={() => setFilterMode("missing")}
-          className={`px-6 py-4 font-medium text-sm whitespace-nowrap transition-colors border-b-2 ${
+          className={`px-5 py-4 font-medium text-sm whitespace-nowrap transition-colors border-b-2 ${
             filterMode === "missing"
               ? "border-amber-500 text-amber-600 dark:text-amber-400"
               : "border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
@@ -520,13 +531,33 @@ export default function AnnualCheck() {
         </button>
         <button
           onClick={() => setFilterMode("found")}
-          className={`px-6 py-4 font-medium text-sm whitespace-nowrap transition-colors border-b-2 ${
+          className={`px-5 py-4 font-medium text-sm whitespace-nowrap transition-colors border-b-2 ${
             filterMode === "found"
               ? "border-emerald-500 text-emerald-600 dark:text-emerald-400"
               : "border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
           }`}
         >
           Encontrados ({foundBooksList.length})
+        </button>
+        <button
+          onClick={() => setFilterMode("loaned")}
+          className={`px-5 py-4 font-medium text-sm whitespace-nowrap transition-colors border-b-2 ${
+            filterMode === "loaned"
+              ? "border-purple-500 text-purple-600 dark:text-purple-400"
+              : "border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+          }`}
+        >
+          Prestados ({loanedBooksList.length})
+        </button>
+        <button
+          onClick={() => setFilterMode("dropped")}
+          className={`px-5 py-4 font-medium text-sm whitespace-nowrap transition-colors border-b-2 ${
+            filterMode === "dropped"
+              ? "border-red-500 text-red-600 dark:text-red-400"
+              : "border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+          }`}
+        >
+          Bajas ({droppedBooksList.length})
         </button>
       </div>
 
@@ -560,13 +591,21 @@ export default function AnnualCheck() {
                       : idx % 2 === 0 ? "bg-white" : "bg-slate-50"
                   }`}>
                     <td className="p-4">
-                      {isFound ? (
+                      {isDropped(book) ? (
+                        <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold ${isDark ? "bg-red-900/30 text-red-400" : "bg-red-100 text-red-700"}`}>
+                          <XCircle size={14} /> {book.statusPhysical === "LOST" ? "Extraviado" : "Descartado"}
+                        </span>
+                      ) : isLoaned(book) ? (
+                        <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold ${isDark ? "bg-purple-900/30 text-purple-400" : "bg-purple-100 text-purple-700"}`}>
+                          <BookX size={14} /> Prestado
+                        </span>
+                      ) : isFound ? (
                         <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold ${isDark ? "bg-emerald-900/30 text-emerald-400" : "bg-emerald-100 text-emerald-700"}`}>
                           <CheckCircle2 size={14} /> Encontrado
                         </span>
                       ) : (
                         <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold ${isDark ? "bg-amber-900/30 text-amber-400" : "bg-amber-100 text-amber-700"}`}>
-                          <XCircle size={14} /> Pendiente
+                          <AlertTriangle size={14} /> Pendiente
                         </span>
                       )}
                     </td>

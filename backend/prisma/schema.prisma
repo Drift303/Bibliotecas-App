@@ -76,6 +76,7 @@ enum PhysicalStatus {
   GOOD
   DAMAGED
   LOST
+  DISCARDED
 }
 
 enum LogicalStatus {

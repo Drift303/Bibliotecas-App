@@ -23,6 +23,7 @@
     "express-rate-limit": "^6.7.0",
     "helmet": "^7.0.0",
     "jsonwebtoken": "^9.0.0",
+    "nodemailer": "^9.0.3",
     "zod": "^3.22.2"
   },
   "devDependencies": {
