@@ -166,14 +166,18 @@ export default function Students() {
     }
   };
 
-  const filteredStudents = students.filter((student) => {
-    const term = search.toLowerCase();
-    return (
-      student.name.toLowerCase().includes(term) ||
-      student.email.toLowerCase().includes(term) ||
-      student.studentId.toLowerCase().includes(term)
-    );
-  });
+  const searchStudentLower = search.toLowerCase().trim();
+  const exactStudentMatch = students.filter(s => s.studentId && s.studentId.toLowerCase() === searchStudentLower);
+
+  const filteredStudents = exactStudentMatch.length > 0
+    ? exactStudentMatch
+    : students.filter((student) => {
+        return (
+          student.name.toLowerCase().includes(searchStudentLower) ||
+          student.email.toLowerCase().includes(searchStudentLower) ||
+          student.studentId.toLowerCase().includes(searchStudentLower)
+        );
+      });
 
   return (
     <DashboardLayout>

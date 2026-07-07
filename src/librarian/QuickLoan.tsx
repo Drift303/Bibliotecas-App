@@ -113,10 +113,15 @@ export default function QuickLoan() {
   }, []);
 
   // --- BÚSQUEDA DE ESTUDIANTES EN TIEMPO REAL ---
-  const filteredStudents = students.filter((s) =>
-    s.name.toLowerCase().includes(form.studentSearch.toLowerCase()) ||
-    s.studentId.toLowerCase().includes(form.studentSearch.toLowerCase())
-  );
+  const searchStudentLower = form.studentSearch.toLowerCase().trim();
+  const exactStudentMatch = students.filter(s => s.studentId && s.studentId.toLowerCase() === searchStudentLower);
+  
+  const filteredStudents = exactStudentMatch.length > 0 
+    ? exactStudentMatch
+    : students.filter((s) =>
+        s.name.toLowerCase().includes(searchStudentLower) ||
+        s.studentId.toLowerCase().includes(searchStudentLower)
+      );
 
   const handleSelectStudent = (student: Student) => {
     setForm({
@@ -139,10 +144,16 @@ export default function QuickLoan() {
   };
 
   // --- BÚSQUEDA DE LIBROS EN TIEMPO REAL ---
-  const filteredBooks = books.filter((b) =>
-    b.title.toLowerCase().includes(form.bookSearch.toLowerCase()) ||
-    b.author.toLowerCase().includes(form.bookSearch.toLowerCase())
-  );
+  const searchBookLower = form.bookSearch.toLowerCase().trim();
+  const exactBookMatch = books.filter(b => b.isbn && b.isbn.toLowerCase() === searchBookLower);
+  
+  const filteredBooks = exactBookMatch.length > 0
+    ? exactBookMatch
+    : books.filter((b) =>
+        b.title.toLowerCase().includes(searchBookLower) ||
+        b.author.toLowerCase().includes(searchBookLower) ||
+        (b.isbn && b.isbn.toLowerCase().includes(searchBookLower))
+      );
 
   const handleSelectBook = (book: Book) => {
     setForm({
