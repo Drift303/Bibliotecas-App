@@ -34,8 +34,58 @@ export function useBookInventory() {
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const [selectedBookForBarcode, setSelectedBookForBarcode] = useState<Book | null>(null);
+  const [selectedBooksForBarcode, setSelectedBooksForBarcode] = useState<Book[]>([]);
   const [showBarcodeModal, setShowBarcodeModal] = useState(false);
+
+  const [uploadConflicts, setUploadConflicts] = useState<any[]>([]);
+  const [pendingUploads, setPendingUploads] = useState<any[]>([]);
+  const [showUploadModal, setShowUploadModal] = useState(false);
+
+  const [selectedBooksToPrint, setSelectedBooksToPrint] = useState<Set<string | number>>(new Set());
+
+  const handleToggleSelectBook = (id: string | number) => {
+    const newSelected = new Set(selectedBooksToPrint);
+    if (newSelected.has(id)) {
+      newSelected.delete(id);
+    } else {
+      newSelected.add(id);
+    }
+    setSelectedBooksToPrint(newSelected);
+  };
+
+  const handleSelectAllBooks = (ids: (string | number)[]) => {
+    if (selectedBooksToPrint.size > 0 && selectedBooksToPrint.size === ids.length) {
+      setSelectedBooksToPrint(new Set());
+    } else {
+      setSelectedBooksToPrint(new Set(ids));
+    }
+  };
+
+  const confirmUpload = async (itemsToUpload: any[]) => {
+    setUploading(true);
+    setStatusMessage("Guardando libros en el inventario...");
+    setStatusType("info");
+    setShowUploadModal(false);
+
+    let newBooksCount = 0;
+    let errorsCount = 0;
+
+    for (let i = 0; i < itemsToUpload.length; i++) {
+      try {
+        await api.post("/books", itemsToUpload[i]);
+        newBooksCount++;
+      } catch (err) {
+        console.error("Error guardando fila", err);
+        errorsCount++;
+      }
+    }
+
+    setStatusType(errorsCount === 0 ? "ok" : "info");
+    setStatusMessage(`Carga masiva completada: ${newBooksCount} libros añadidos. ${errorsCount > 0 ? `(${errorsCount} errores)` : ""}`);
+    
+    loadBooks();
+    setUploading(false);
+  };
 
   // --- EFECTO DE CARGA ASÍNCRONA DESDE EL BACKEND ---
   const loadBooks = async () => {
@@ -209,7 +259,13 @@ export function useBookInventory() {
   };
 
   const handlePrintBarcode = (book: Book) => {
-    setSelectedBookForBarcode(book);
+    setSelectedBooksForBarcode([book]);
+    setShowBarcodeModal(true);
+  };
+
+  const handlePrintSelected = () => {
+    const selected = books.filter(b => selectedBooksToPrint.has(b.id));
+    setSelectedBooksForBarcode(selected);
     setShowBarcodeModal(true);
   };
 
@@ -240,7 +296,8 @@ export function useBookInventory() {
       const iIdx = isbnIdx >= 0 ? isbnIdx : 0;
       const tIdx = titleIdx >= 0 ? titleIdx : 1;
       const aIdx = authorIdx >= 0 ? authorIdx : 2;
-      const sIdx = statusIdx >= 0 ? statusIdx : 3;
+      const conflicts: any[] = [];
+      const ready: any[] = [];
 
       for (let i = 1; i < rawJson.length; i++) {
         const row = rawJson[i];
@@ -264,41 +321,34 @@ export function useBookInventory() {
           locationShelf: "A1",
         };
 
-        try {
-          await api.post("/books", dbPayload);
-          newBooksCount++;
-        } catch (err) {
-          console.error("Error guardando fila", i, err);
-          errorsCount++;
+        const isDuplicate = books.find(b => 
+          (isbn !== "S/N" && b.isbn.toLowerCase() === isbn.toLowerCase()) || 
+          (b.title.toLowerCase() === title.toLowerCase())
+        );
+
+        if (isDuplicate) {
+          conflicts.push({ ...dbPayload, duplicateReason: `Ya existe un libro llamado "${isDuplicate.title}" (ISBN: ${isDuplicate.isbn})` });
+        } else {
+          ready.push(dbPayload);
         }
       }
 
-      setStatusType(errorsCount === 0 ? "ok" : "info");
-      setStatusMessage(`Carga masiva completada: ${newBooksCount} libros añadidos. ${errorsCount > 0 ? `(${errorsCount} no se pudieron añadir)` : ""}`);
-      
-      const res = await api.get("/books");
-      const loadedBooks = res.data?.success ? res.data.data : (res.data || []);
-      setBooks((Array.isArray(loadedBooks) ? loadedBooks : []).map((b: any) => ({
-        id: b.id,
-        isbn: b.isbn || "S/N",
-        title: b.title,
-        author: b.author,
-        status:
-          b.statusPhysical === "LOST"
-            ? "Extraviado"
-            : b.statusLogical === "DELETED_LOGICAL"
-            ? "Eliminado"
-            : b.available === true || b.status === "AVAILABLE" || b.statusLogical === "ACTIVE"
-            ? "Disponible"
-            : "Prestado",
-      })));
+      if (conflicts.length > 0) {
+        setUploadConflicts(conflicts);
+        setPendingUploads(ready);
+        setShowUploadModal(true);
+        setStatusMessage("Se detectaron libros duplicados. Por favor revisa la información.");
+        setStatusType("info");
+      } else {
+        await confirmUpload(ready);
+      }
       
     } catch (error) {
       console.error("Error al procesar archivo:", error);
       setStatusType("error");
       setStatusMessage("Hubo un problema procesando el archivo. Verifica que sea un formato válido (.xlsx o .csv).");
-    } finally {
       setUploading(false);
+    } finally {
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
   };
@@ -333,10 +383,10 @@ export function useBookInventory() {
     setShowScanner,
     uploading,
     fileInputRef,
-    selectedBookForBarcode,
+    selectedBooksForBarcode,
     showBarcodeModal,
     setShowBarcodeModal,
-    setSelectedBookForBarcode,
+    setSelectedBooksForBarcode,
     filteredBooks,
     handleAddBook,
     handleEdit,
@@ -344,6 +394,16 @@ export function useBookInventory() {
     handleSaveBook,
     handleScan,
     handlePrintBarcode,
+    handlePrintSelected,
     handleFileUpload,
+    uploadConflicts,
+    pendingUploads,
+    showUploadModal,
+    setShowUploadModal,
+    confirmUpload,
+    selectedBooksToPrint,
+    setSelectedBooksToPrint,
+    handleToggleSelectBook,
+    handleSelectAllBooks,
   };
 }

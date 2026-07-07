@@ -14,9 +14,14 @@ interface BookTableProps {
   onEdit: (id: string | number) => void;
   onDelete: (id: string | number) => void;
   onPrintBarcode: (book: Book) => void;
+  selectedBooks: Set<string | number>;
+  onToggleSelect: (id: string | number) => void;
+  onSelectAll: (ids: (string | number)[]) => void;
 }
 
-export function BookTable({ books, isDark, onEdit, onDelete, onPrintBarcode }: BookTableProps) {
+export function BookTable({ books, isDark, onEdit, onDelete, onPrintBarcode, selectedBooks, onToggleSelect, onSelectAll }: BookTableProps) {
+  const allIds = books.map(b => b.id);
+  const isAllSelected = books.length > 0 && books.every(b => selectedBooks.has(b.id));
   return (
     <div
       className={`rounded-lg border overflow-hidden ${
@@ -34,6 +39,14 @@ export function BookTable({ books, isDark, onEdit, onDelete, onPrintBarcode }: B
           } border-b`}
         >
           <tr>
+            <th className="p-3 w-12 text-center">
+              <input 
+                type="checkbox" 
+                checked={isAllSelected}
+                onChange={() => onSelectAll(allIds)}
+                className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              />
+            </th>
             <th className="p-3 text-left font-semibold">ISBN</th>
             <th className="p-3 text-left font-semibold">Título</th>
             <th className="p-3 text-left font-semibold">Autor</th>
@@ -55,6 +68,14 @@ export function BookTable({ books, isDark, onEdit, onDelete, onPrintBarcode }: B
                   : "bg-slate-50 hover:bg-slate-100"
               }`}
             >
+              <td className="p-3 text-center">
+                <input 
+                  type="checkbox" 
+                  checked={selectedBooks.has(book.id)}
+                  onChange={() => onToggleSelect(book.id)}
+                  className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                />
+              </td>
               <td className={`p-3 font-mono text-sm ${isDark ? "text-slate-300" : "text-slate-700"}`}>
                 {book.isbn}
               </td>

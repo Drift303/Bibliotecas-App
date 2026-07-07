@@ -7,7 +7,8 @@ import {
   Package, 
   UserCheck, 
   Users, 
-  History 
+  History,
+  ClipboardCheck
 } from "lucide-react";
 
 // CORREGIDO: Ahora el SVG tiene el path para dibujar el libro físico
@@ -37,6 +38,7 @@ export default function Sidebar() {
   const links = [
     { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
     { to: "/inventory", label: "Inventario", icon: Package },
+    { to: "/annual-inventory", label: "Auditoría Anual", icon: ClipboardCheck },
     { to: "/quick-loan", label: "Préstamo Rápido", icon: UserCheck },
     { to: "/students", label: "Alumnos", icon: Users },
     { to: "/loans", label: "Historial", icon: History },
