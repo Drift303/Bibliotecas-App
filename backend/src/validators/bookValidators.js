@@ -12,7 +12,12 @@ const createBookSchema = z.object({
 
 const updateBookSchema = createBookSchema.partial();
 
+const createBooksBulkSchema = z.object({
+  books: z.array(createBookSchema),
+});
+
 module.exports = {
   createBookSchema,
   updateBookSchema,
+  createBooksBulkSchema,
 };

@@ -45,7 +45,7 @@ export default function Sidebar() {
   ];
 
   return (
-    <aside className={`w-64 min-h-screen flex flex-col transition-all duration-300 border-r backdrop-blur-2xl ${
+    <aside className={`w-64 h-screen sticky top-0 flex flex-col transition-all duration-300 border-r backdrop-blur-2xl overflow-y-auto ${
       isDark ? "bg-slate-950/60 border-slate-800/50 text-slate-50 shadow-[4px_0_24px_rgba(0,0,0,0.2)]" : "bg-white/60 border-white/50 text-slate-900 shadow-[4px_0_24px_rgba(0,0,0,0.02)]"
     }`}>
       {/* Header con Ícono + "Biblioteca" + Nombre de usuario */}

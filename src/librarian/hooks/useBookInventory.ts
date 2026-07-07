@@ -11,6 +11,22 @@ interface Book {
   status: string;
 }
 
+export interface ColumnMapping {
+  isbn: number;
+  title: number;
+  author: number;
+  status: number;
+}
+
+// Función para sanitizar texto: elimina espacios extra y quita comillas molestas
+export const sanitizeString = (val: any): string => {
+  if (val === null || val === undefined) return "";
+  let str = val.toString().trim();
+  // Remover comillas dobles o simples al inicio y final
+  str = str.replace(/^["']+|["']+$/g, "");
+  return str.trim();
+};
+
 export function useBookInventory() {
   const [books, setBooks] = useState<Book[]>([]);
   const [search, setSearch] = useState("");
@@ -41,6 +57,11 @@ export function useBookInventory() {
   const [pendingUploads, setPendingUploads] = useState<any[]>([]);
   const [showUploadModal, setShowUploadModal] = useState(false);
 
+  // States for Column Mapper
+  const [showColumnMapper, setShowColumnMapper] = useState(false);
+  const [uploadHeaders, setUploadHeaders] = useState<string[]>([]);
+  const [uploadRawData, setUploadRawData] = useState<any[][]>([]);
+
   const [selectedBooksToPrint, setSelectedBooksToPrint] = useState<Set<string | number>>(new Set());
 
   const handleToggleSelectBook = (id: string | number) => {
@@ -63,25 +84,28 @@ export function useBookInventory() {
 
   const confirmUpload = async (itemsToUpload: any[]) => {
     setUploading(true);
-    setStatusMessage("Guardando libros en el inventario...");
+    setStatusMessage("Guardando libros en el inventario de forma masiva...");
     setStatusType("info");
     setShowUploadModal(false);
 
     let newBooksCount = 0;
     let errorsCount = 0;
 
-    for (let i = 0; i < itemsToUpload.length; i++) {
+    // Enviar en bloques más grandes para máxima velocidad
+    const CHUNK_SIZE = 5000;
+    for (let i = 0; i < itemsToUpload.length; i += CHUNK_SIZE) {
+      const chunk = itemsToUpload.slice(i, i + CHUNK_SIZE);
       try {
-        await api.post("/books", itemsToUpload[i]);
-        newBooksCount++;
+        const res = await api.post("/books/bulk", { books: chunk });
+        newBooksCount += res.data?.data?.count || chunk.length;
       } catch (err) {
-        console.error("Error guardando fila", err);
+        console.error("Error guardando bloque de libros", err);
         errorsCount++;
       }
     }
 
     setStatusType(errorsCount === 0 ? "ok" : "info");
-    setStatusMessage(`Carga masiva completada: ${newBooksCount} libros añadidos. ${errorsCount > 0 ? `(${errorsCount} errores)` : ""}`);
+    setStatusMessage(`Carga masiva completada: ${newBooksCount} libros añadidos. ${errorsCount > 0 ? `(Hubo errores en ${errorsCount} bloques)` : ""}`);
     
     loadBooks();
     setUploading(false);
@@ -284,35 +308,70 @@ export function useBookInventory() {
       const worksheet = workbook.Sheets[workbook.SheetNames[0]];
       const rawJson = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as any[][];
       
-      let newBooksCount = 0;
-      let errorsCount = 0;
-      
-      const headers = rawJson[0]?.map((h: string) => h?.toString().toLowerCase() || "") || [];
-      const isbnIdx = headers.findIndex((h) => h.includes("isbn") || h.includes("código"));
-      const titleIdx = headers.findIndex((h) => h.includes("título") || h.includes("title") || h.includes("nombre"));
-      const authorIdx = headers.findIndex((h) => h.includes("autor") || h.includes("author"));
-      const statusIdx = headers.findIndex((h) => h.includes("estado") || h.includes("status"));
+      if (rawJson.length < 2) {
+        throw new Error("El archivo parece estar vacío o no tiene suficientes datos.");
+      }
 
-      const iIdx = isbnIdx >= 0 ? isbnIdx : 0;
-      const tIdx = titleIdx >= 0 ? titleIdx : 1;
-      const aIdx = authorIdx >= 0 ? authorIdx : 2;
+      const headers = rawJson[0]?.map((h: any) => sanitizeString(h)) || [];
+      
+      setUploadHeaders(headers);
+      setUploadRawData(rawJson);
+      setShowColumnMapper(true);
+      
+    } catch (error) {
+      console.error("Error al leer el archivo Excel:", error);
+      setStatusType("error");
+      setStatusMessage("Hubo un problema leyendo el archivo. Verifica que sea un formato válido (.xlsx o .csv).");
+      setUploading(false);
+    } finally {
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
+  const processMappedData = async (mapping: ColumnMapping) => {
+    setShowColumnMapper(false);
+    setUploading(true);
+    setStatusMessage("Procesando filas y detectando duplicados...");
+    setStatusType("info");
+
+    try {
       const conflicts: any[] = [];
       const ready: any[] = [];
+      const rawJson = uploadRawData;
 
+      // Optimización O(1) para búsquedas de duplicados (evita congelamiento en >8000 filas)
+      const existingIsbns = new Map();
+      const existingTitles = new Map();
+      
+      books.forEach(b => {
+        if (b.isbn && b.isbn !== "S/N") {
+          existingIsbns.set(b.isbn.toLowerCase(), b);
+        }
+        if (b.title) {
+          existingTitles.set(b.title.toLowerCase(), b);
+        }
+      });
+
+      // Iniciamos en 1 para omitir encabezados
       for (let i = 1; i < rawJson.length; i++) {
         const row = rawJson[i];
-        if (!row || row.length === 0 || (!row[iIdx] && !row[tIdx])) continue;
+        if (!row || row.length === 0) continue;
 
-        const isbn = row[iIdx]?.toString() || "S/N";
-        const title = row[tIdx]?.toString() || "Desconocido";
-        const author = row[aIdx]?.toString() || "Desconocido";
-        const rawStatus = row[sIdx]?.toString().toLowerCase() || "disponible";
+        // Sanitizar y extraer según el mapeo del usuario
+        const isbn = mapping.isbn >= 0 ? sanitizeString(row[mapping.isbn]) : "S/N";
+        const title = mapping.title >= 0 ? sanitizeString(row[mapping.title]) : "Desconocido";
+        const author = mapping.author >= 0 ? sanitizeString(row[mapping.author]) : "Desconocido";
+        
+        // Si no hay titulo y no hay isbn, es una fila vacía
+        if (!title && (!isbn || isbn === "S/N")) continue;
+
+        const rawStatus = mapping.status >= 0 ? sanitizeString(row[mapping.status]).toLowerCase() : "disponible";
         const isAvailable = rawStatus.includes("disponible") || rawStatus === "available";
 
         const dbPayload = {
-          isbn,
-          title,
-          author,
+          isbn: isbn || "S/N",
+          title: title || "Desconocido",
+          author: author || "Desconocido",
           available: isAvailable,
           status: isAvailable ? "AVAILABLE" : "LOANED",
           statusPhysical: "GOOD",
@@ -321,15 +380,17 @@ export function useBookInventory() {
           locationShelf: "A1",
         };
 
-        const isDuplicate = books.find(b => 
-          (isbn !== "S/N" && b.isbn.toLowerCase() === isbn.toLowerCase()) || 
-          (b.title.toLowerCase() === title.toLowerCase())
-        );
+        const dupByIsbn = (dbPayload.isbn !== "S/N") ? existingIsbns.get(dbPayload.isbn.toLowerCase()) : null;
+        const dupByTitle = existingTitles.get(dbPayload.title.toLowerCase());
+        const isDuplicate = dupByIsbn || dupByTitle;
 
         if (isDuplicate) {
           conflicts.push({ ...dbPayload, duplicateReason: `Ya existe un libro llamado "${isDuplicate.title}" (ISBN: ${isDuplicate.isbn})` });
         } else {
           ready.push(dbPayload);
+          // Opcional: Agregar al Map temporalmente para detectar duplicados *dentro del mismo Excel*
+          if (dbPayload.isbn !== "S/N") existingIsbns.set(dbPayload.isbn.toLowerCase(), dbPayload);
+          existingTitles.set(dbPayload.title.toLowerCase(), dbPayload);
         }
       }
 
@@ -344,12 +405,10 @@ export function useBookInventory() {
       }
       
     } catch (error) {
-      console.error("Error al procesar archivo:", error);
+      console.error("Error al procesar datos mapeados:", error);
       setStatusType("error");
-      setStatusMessage("Hubo un problema procesando el archivo. Verifica que sea un formato válido (.xlsx o .csv).");
+      setStatusMessage("Hubo un problema procesando las filas.");
       setUploading(false);
-    } finally {
-      if (fileInputRef.current) fileInputRef.current.value = "";
     }
   };
 
@@ -405,5 +464,10 @@ export function useBookInventory() {
     setSelectedBooksToPrint,
     handleToggleSelectBook,
     handleSelectAllBooks,
+    showColumnMapper,
+    setShowColumnMapper,
+    uploadHeaders,
+    uploadRawData,
+    processMappedData,
   };
 }

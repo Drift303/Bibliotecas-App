@@ -4,7 +4,9 @@ import { useTheme } from "../context/ThemeContext";
 import api from "../api";
 import { useBarcodeScannerGun } from "./hooks/useBarcodeScannerGun";
 import { BarcodeScanner } from "../components/ui/BarcodeScanner";
-import { CheckCircle2, XCircle, Search, Camera, ClipboardCheck, BookX } from "lucide-react";
+import { CheckCircle2, XCircle, Search, Camera, ClipboardCheck, BookX, AlertTriangle, PlusCircle, Save, Download } from "lucide-react";
+import { BookForm } from "./components/BookForm";
+import * as XLSX from "xlsx";
 
 interface Book {
   id: string | number;
@@ -20,7 +22,17 @@ export default function AnnualCheck() {
   const { isDark } = useTheme();
   const [books, setBooks] = useState<Book[]>([]);
   const [loading, setLoading] = useState(true);
-  const [foundBookIds, setFoundBookIds] = useState<Set<string | number>>(new Set());
+  
+  const [foundBookIds, setFoundBookIds] = useState<Set<string | number>>(() => {
+    const saved = localStorage.getItem("audit_progress");
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return new Set(parsed);
+      } catch (e) {}
+    }
+    return new Set();
+  });
   
   const [search, setSearch] = useState("");
   const [showScanner, setShowScanner] = useState(false);
@@ -34,12 +46,30 @@ export default function AnnualCheck() {
   const [savingAudit, setSavingAudit] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
 
+  // States for adding a new book dynamically during audit
+  const [showAddBookModal, setShowAddBookModal] = useState(false);
+  const [unknownBarcode, setUnknownBarcode] = useState("");
+  const [newBookFormData, setNewBookFormData] = useState({
+    isbn: "",
+    title: "",
+    author: "",
+    status: "Disponible",
+  });
+  const [newBookError, setNewBookError] = useState("");
+  const [savingNewBook, setSavingNewBook] = useState(false);
+
   // Filter mode: "all", "missing", "found"
   const [filterMode, setFilterMode] = useState<"all" | "missing" | "found">("all");
 
   useEffect(() => {
     loadBooks();
   }, []);
+
+  // Guardar progreso automáticamente cuando cambia
+  useEffect(() => {
+    const idsArray = Array.from(foundBookIds);
+    localStorage.setItem("audit_progress", JSON.stringify(idsArray));
+  }, [foundBookIds]);
 
   const loadBooks = async () => {
     setLoading(true);
@@ -81,10 +111,67 @@ export default function AnnualCheck() {
       });
       setSaveSuccess(false);
       setSearch("");
+      setShowScanner(false);
+      setUnknownBarcode(""); // Limpiar el mensaje de error si había uno
     } else {
-      alert(`No se encontró ningún libro con el código: ${code}`);
+      setShowScanner(false);
+      setUnknownBarcode(code);
     }
-    setShowScanner(false);
+  };
+
+  const handleSaveNewBook = async () => {
+    setSavingNewBook(true);
+    setNewBookError("");
+    try {
+      const payload = {
+        isbn: newBookFormData.isbn || "S/N",
+        title: newBookFormData.title || "Desconocido",
+        author: newBookFormData.author || "Desconocido",
+        available: newBookFormData.status === "Disponible",
+        status: newBookFormData.status === "Disponible" ? "AVAILABLE" : "LOANED",
+        statusPhysical: "GOOD",
+        statusLogical: "ACTIVE",
+        locationHall: "General",
+        locationShelf: "A1",
+      };
+      
+      const res = await api.post("/books", payload);
+      const createdBook = res.data.data;
+      
+      const newBookNormalized = {
+        id: createdBook.id,
+        isbn: createdBook.isbn || "S/N",
+        title: createdBook.title,
+        author: createdBook.author,
+        statusPhysical: createdBook.statusPhysical || "GOOD",
+        observation: createdBook.observation || "",
+        validator: createdBook.validator || "",
+      };
+
+      setBooks(prev => [newBookNormalized, ...prev]);
+      
+      setFoundBookIds(prev => {
+        const newSet = new Set(prev);
+        newSet.add(createdBook.id);
+        return newSet;
+      });
+      
+      setLastScanned(newBookNormalized);
+      setAuditForm({
+        statusPhysical: newBookNormalized.statusPhysical,
+        observation: "",
+        validator: ""
+      });
+
+      setShowAddBookModal(false);
+      setUnknownBarcode("");
+      setSearch("");
+    } catch (err) {
+      console.error("Error creando nuevo libro", err);
+      setNewBookError("Hubo un problema registrando el libro. Intenta nuevamente.");
+    } finally {
+      setSavingNewBook(false);
+    }
   };
 
   const handleSaveAudit = async () => {
@@ -129,6 +216,41 @@ export default function AnnualCheck() {
   const missingBooks = books.filter(b => !foundBookIds.has(b.id));
   const foundBooksList = books.filter(b => foundBookIds.has(b.id));
 
+  const exportAuditToExcel = () => {
+    // 1. Preparar datos para Encontrados
+    const foundData = foundBooksList.map(b => ({
+      ISBN: b.isbn,
+      Título: b.title,
+      Autor: b.author,
+      "Estado Físico": b.statusPhysical,
+      Observaciones: b.observation || "Ninguna",
+      Validador: b.validator || "N/A"
+    }));
+
+    // 2. Preparar datos para Faltantes
+    const missingData = missingBooks.map(b => ({
+      ISBN: b.isbn,
+      Título: b.title,
+      Autor: b.author,
+      "Estado Físico": b.statusPhysical,
+      "Última Observación": b.observation || "Ninguna"
+    }));
+
+    // 3. Crear el libro de Excel
+    const wb = XLSX.utils.book_new();
+
+    // 4. Agregar Hojas
+    const wsFound = XLSX.utils.json_to_sheet(foundData.length ? foundData : [{ Mensaje: "No se encontraron libros aún" }]);
+    const wsMissing = XLSX.utils.json_to_sheet(missingData.length ? missingData : [{ Mensaje: "No hay libros faltantes" }]);
+
+    XLSX.utils.book_append_sheet(wb, wsFound, "Libros Encontrados");
+    XLSX.utils.book_append_sheet(wb, wsMissing, "Libros Faltantes");
+
+    // 5. Descargar el archivo
+    const fecha = new Date().toISOString().split("T")[0];
+    XLSX.writeFile(wb, `Auditoria_Inventario_${fecha}.xlsx`);
+  };
+
   let displayBooks = books;
   if (filterMode === "found") displayBooks = foundBooksList;
   if (filterMode === "missing") displayBooks = missingBooks;
@@ -143,8 +265,33 @@ export default function AnnualCheck() {
           Auditoría Anual de Inventario
         </h1>
         <p className={`${isDark ? "text-slate-400" : "text-slate-600"}`}>
-          Escanea los códigos de barras de los libros físicos para verificar su existencia en el sistema.
+          Escanea los códigos de barras de los libros físicos para verificar su existencia en el sistema. Tu progreso se guarda automáticamente.
         </p>
+      </div>
+
+      <div className="flex flex-wrap gap-4 mb-6">
+        <button
+          onClick={() => {
+            if(window.confirm("¿Estás seguro de reiniciar la auditoría? Todo el progreso actual se perderá.")) {
+              setFoundBookIds(new Set());
+              localStorage.removeItem("audit_progress");
+            }
+          }}
+          className={`px-4 py-2 text-sm font-medium rounded-lg border transition-all ${
+            isDark ? "border-slate-700 text-slate-300 hover:bg-slate-800" : "border-slate-300 text-slate-700 hover:bg-slate-50"
+          }`}
+        >
+          Reiniciar Auditoría
+        </button>
+
+        <button
+          onClick={() => {
+            exportAuditToExcel();
+          }}
+          className="flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white transition-all shadow-sm"
+        >
+          <Download size={18} /> Exportar Reporte a Excel
+        </button>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
@@ -321,6 +468,30 @@ export default function AnnualCheck() {
                 <p>Esperando el primer escaneo...</p>
               </div>
             )}
+            
+            {/* Modal Not Found Action */}
+            {unknownBarcode && !showAddBookModal && (
+              <div className={`mt-4 p-4 rounded-xl border flex items-center justify-between ${isDark ? "bg-amber-900/20 border-amber-800" : "bg-amber-50 border-amber-200"}`}>
+                <div className="flex items-center gap-3">
+                  <AlertTriangle className={isDark ? "text-amber-500" : "text-amber-600"} size={24} />
+                  <div>
+                    <h4 className={`font-semibold ${isDark ? "text-amber-400" : "text-amber-800"}`}>Código no encontrado</h4>
+                    <p className={`text-sm ${isDark ? "text-amber-500/80" : "text-amber-700"}`}>El libro con código <strong>{unknownBarcode}</strong> no existe en el sistema.</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    setNewBookFormData(prev => ({ ...prev, isbn: unknownBarcode }));
+                    setShowAddBookModal(true);
+                  }}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all shadow-sm ${
+                    isDark ? "bg-amber-600 hover:bg-amber-700 text-white" : "bg-amber-500 hover:bg-amber-600 text-white"
+                  }`}
+                >
+                  <PlusCircle size={18} /> Registrar
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -415,6 +586,26 @@ export default function AnnualCheck() {
           onScan={handleProcessCode}
           onClose={() => setShowScanner(false)}
         />
+      )}
+
+      {showAddBookModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setShowAddBookModal(false)} />
+          <div className="relative w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-2xl shadow-xl">
+            <BookForm
+              editingBookId={null}
+              formData={newBookFormData}
+              setFormData={setNewBookFormData as any}
+              actionError={newBookError}
+              isDark={isDark}
+              onSave={handleSaveNewBook}
+              onCancel={() => {
+                setShowAddBookModal(false);
+                setUnknownBarcode("");
+              }}
+            />
+          </div>
+        </div>
       )}
     </DashboardLayout>
   );
