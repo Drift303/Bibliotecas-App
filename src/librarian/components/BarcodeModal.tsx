@@ -1,4 +1,5 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useState, useRef } from "react";
+import QRCode from "qrcode";
 import JsBarcode from "jsbarcode";
 import { X, Printer } from "lucide-react";
 
@@ -14,6 +15,8 @@ interface BarcodeModalProps {
 }
 
 export function BarcodeModal({ isOpen, onClose, book, isDark }: BarcodeModalProps) {
+  const [qrDataUrl, setQrDataUrl] = useState<string>("");
+  const [codeFormat, setCodeFormat] = useState<"QR" | "BARCODE">("QR");
   const svgRef = useRef<SVGSVGElement | null>(null);
 
   useEffect(() => {
@@ -21,11 +24,11 @@ export function BarcodeModal({ isOpen, onClose, book, isDark }: BarcodeModalProp
       try {
         JsBarcode(svgRef.current, book.isbn, {
           format: "CODE128",
-          width: 2,
-          height: 60,
+          width: 2.5,
+          height: 70,
           displayValue: true,
-          fontSize: 14,
-          background: isDark ? "#1e293b" : "#ffffff",
+          fontSize: 16,
+          background: "transparent",
           lineColor: isDark ? "#ffffff" : "#000000",
         });
       } catch (err) {
@@ -34,16 +37,49 @@ export function BarcodeModal({ isOpen, onClose, book, isDark }: BarcodeModalProp
     }
   }, [book.isbn, isOpen, isDark]);
 
+  useEffect(() => {
+    if (isOpen && book.isbn) {
+      QRCode.toDataURL(book.isbn, {
+        width: 250,
+        margin: 1,
+        color: {
+          dark: isDark ? "#ffffff" : "#000000",
+          light: isDark ? "#1e293b" : "#ffffff",
+        }
+      })
+      .then(url => {
+        setQrDataUrl(url);
+      })
+      .catch(err => {
+        console.error("Error generating QR code:", err);
+      });
+    }
+  }, [book.isbn, isOpen, isDark]);
+
   if (!isOpen) return null;
 
-  const handlePrint = () => {
-    // Para la impresión siempre usamos fondo blanco y líneas negras para que sea legible
+  const handlePrint = async () => {
+    let printQrUrl = "";
+    try {
+      printQrUrl = await QRCode.toDataURL(book.isbn, {
+        width: 250,
+        margin: 1,
+        color: {
+          dark: "#000000",
+          light: "#ffffff",
+        }
+      });
+    } catch (err) {
+      console.error("Error creating printable QR code:", err);
+      return;
+    }
+
     const printSvgElement = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     try {
       JsBarcode(printSvgElement, book.isbn, {
         format: "CODE128",
-        width: 2,
-        height: 65,
+        width: 2.5,
+        height: 70,
         displayValue: true,
         fontSize: 14,
         background: "#ffffff",
@@ -54,15 +90,19 @@ export function BarcodeModal({ isOpen, onClose, book, isDark }: BarcodeModalProp
     }
     const barcodeSvg = printSvgElement.outerHTML || "";
 
+    const activeCodeHTML = codeFormat === "QR" 
+      ? `<img src="${printQrUrl}" alt="QR Code" />` 
+      : `${barcodeSvg}`;
+
     const printWindow = window.open("", "_blank");
     if (!printWindow) {
-      alert("Por favor, permite las ventanas emergentes para poder imprimir el código de barras.");
+      alert("Por favor, permite las ventanas emergentes para poder imprimir el código QR.");
       return;
     }
     printWindow.document.write(`
       <html>
         <head>
-          <title>Imprimir Código de Barras - ${book.title}</title>
+          <title>Imprimir Código QR - ${book.title}</title>
           <style>
             @page {
               size: 60mm 60mm;
@@ -114,8 +154,14 @@ export function BarcodeModal({ isOpen, onClose, book, isDark }: BarcodeModalProp
             .barcode-container {
               width: 100%;
               display: flex;
+              flex-direction: column;
               justify-content: center;
               align-items: center;
+              gap: 4px;
+            }
+            .barcode-container img {
+              max-width: 100%;
+              height: auto;
             }
             .barcode-container svg {
               max-width: 100%;
@@ -128,7 +174,7 @@ export function BarcodeModal({ isOpen, onClose, book, isDark }: BarcodeModalProp
             <h1 class="title">${book.title}</h1>
             <p class="author">${book.author}</p>
             <div class="barcode-container">
-              ${barcodeSvg}
+              ${activeCodeHTML}
             </div>
           </div>
           <script>
@@ -159,19 +205,47 @@ export function BarcodeModal({ isOpen, onClose, book, isDark }: BarcodeModalProp
           <X size={20} />
         </button>
         <h3 className="text-xl font-bold mb-4">
-          Etiqueta de Código de Barras
+          Etiqueta del Libro
         </h3>
 
         <div className={`flex flex-col items-center p-6 rounded-2xl mb-6 border ${
           isDark ? "bg-slate-950 border-slate-800" : "bg-slate-50 border-slate-100"
         }`}>
-          <div className="text-center w-full mb-6">
+          <div className="text-center w-full mb-4">
             <h4 className="font-semibold text-lg truncate px-2">{book.title}</h4>
             <p className={`text-sm truncate px-2 ${isDark ? "text-slate-400" : "text-slate-500"}`}>{book.author}</p>
           </div>
 
-          <div className="p-4 bg-white dark:bg-slate-800 rounded-xl shadow-inner border border-slate-200 dark:border-slate-700 w-full flex justify-center">
-            <svg ref={svgRef}></svg>
+          <div className={`flex gap-1 w-full p-1 rounded-lg mb-4 ${isDark ? "bg-slate-900/50" : "bg-slate-200/50"}`}>
+            <button
+              onClick={() => setCodeFormat("QR")}
+              className={`flex-1 py-1.5 text-xs font-semibold rounded-md transition-all ${
+                codeFormat === "QR"
+                  ? isDark ? "bg-slate-700 text-white shadow" : "bg-white text-slate-800 shadow"
+                  : isDark ? "text-slate-400 hover:text-slate-300" : "text-slate-500 hover:text-slate-700"
+              }`}
+            >
+              QR
+            </button>
+            <button
+              onClick={() => setCodeFormat("BARCODE")}
+              className={`flex-1 py-1.5 text-xs font-semibold rounded-md transition-all ${
+                codeFormat === "BARCODE"
+                  ? isDark ? "bg-slate-700 text-white shadow" : "bg-white text-slate-800 shadow"
+                  : isDark ? "text-slate-400 hover:text-slate-300" : "text-slate-500 hover:text-slate-700"
+              }`}
+            >
+              Barras
+            </button>
+          </div>
+
+          <div className="p-4 bg-white dark:bg-slate-800 rounded-xl shadow-inner border border-slate-200 dark:border-slate-700 w-full overflow-hidden flex flex-col items-center justify-center min-h-[160px]">
+            <div className={codeFormat === "BARCODE" ? "block" : "hidden"}>
+              <svg ref={svgRef}></svg>
+            </div>
+            <div className={codeFormat === "QR" ? "block" : "hidden"}>
+              {qrDataUrl && <img src={qrDataUrl} alt="Código QR" className="w-48 h-48 object-contain" />}
+            </div>
           </div>
         </div>
 

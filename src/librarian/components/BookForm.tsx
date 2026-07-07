@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
-import { AlertCircle, Camera, Printer, Barcode } from "lucide-react";
+import { AlertCircle, Camera, Printer, QrCode } from "lucide-react";
+import QRCode from "qrcode";
 import JsBarcode from "jsbarcode";
 import { BarcodeScanner } from "../../components/ui/BarcodeScanner";
 
@@ -35,6 +36,8 @@ export function BookForm({
   onCancel,
 }: BookFormProps) {
   const [showScanner, setShowScanner] = useState(false);
+  const [qrDataUrl, setQrDataUrl] = useState<string>("");
+  const [codeFormat, setCodeFormat] = useState<"QR" | "BARCODE">("QR");
   const svgRef = useRef<SVGSVGElement | null>(null);
 
   useEffect(() => {
@@ -42,16 +45,37 @@ export function BookForm({
       try {
         JsBarcode(svgRef.current, formData.isbn, {
           format: "CODE128",
-          width: 1.8,
-          height: 50,
+          width: 2.5,
+          height: 70,
           displayValue: true,
-          fontSize: 12,
+          fontSize: 16,
           background: isDark ? "#1e293b" : "#f8fafc",
           lineColor: isDark ? "#ffffff" : "#000000",
         });
       } catch (err) {
         console.error("Error generating barcode in form preview:", err);
       }
+    }
+  }, [formData.isbn, isDark]);
+
+  useEffect(() => {
+    if (formData.isbn) {
+      QRCode.toDataURL(formData.isbn, {
+        width: 250,
+        margin: 1,
+        color: {
+          dark: isDark ? "#ffffff" : "#000000",
+          light: isDark ? "#1e293b" : "#ffffff",
+        }
+      })
+      .then(url => {
+        setQrDataUrl(url);
+      })
+      .catch(err => {
+        console.error("Error generating QR code in form preview:", err);
+      });
+    } else {
+      setQrDataUrl("");
     }
   }, [formData.isbn, isDark]);
 
@@ -76,14 +100,30 @@ export function BookForm({
     setShowScanner(false);
   };
 
-  const handlePrint = () => {
+  const handlePrint = async () => {
     if (!formData.isbn) return;
+    
+    let printQrUrl = "";
+    try {
+      printQrUrl = await QRCode.toDataURL(formData.isbn, {
+        width: 250,
+        margin: 1,
+        color: {
+          dark: "#000000",
+          light: "#ffffff",
+        }
+      });
+    } catch (err) {
+      console.error("Error creating printable QR code:", err);
+      return;
+    }
+
     const printSvgElement = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     try {
       JsBarcode(printSvgElement, formData.isbn, {
         format: "CODE128",
-        width: 2,
-        height: 65,
+        width: 2.5,
+        height: 70,
         displayValue: true,
         fontSize: 14,
         background: "#ffffff",
@@ -94,15 +134,19 @@ export function BookForm({
     }
     const barcodeSvg = printSvgElement.outerHTML || "";
 
+    const activeCodeHTML = codeFormat === "QR" 
+      ? `<img src="${printQrUrl}" alt="QR Code" />` 
+      : `${barcodeSvg}`;
+
     const printWindow = window.open("", "_blank");
     if (!printWindow) {
-      alert("Por favor, permite las ventanas emergentes para poder imprimir el código de barras.");
+      alert("Por favor, permite las ventanas emergentes para poder imprimir el código QR.");
       return;
     }
     printWindow.document.write(`
       <html>
         <head>
-          <title>Imprimir Código de Barras - ${formData.title || "Nuevo Libro"}</title>
+          <title>Imprimir Código QR - ${formData.title || "Nuevo Libro"}</title>
           <style>
             @page {
               size: 60mm 60mm;
@@ -154,8 +198,14 @@ export function BookForm({
             .barcode-container {
               width: 100%;
               display: flex;
+              flex-direction: column;
               justify-content: center;
               align-items: center;
+              gap: 4px;
+            }
+            .barcode-container img {
+              max-width: 100%;
+              height: auto;
             }
             .barcode-container svg {
               max-width: 100%;
@@ -168,7 +218,7 @@ export function BookForm({
             <h1 class="title">${formData.title || "Sin título"}</h1>
             <p class="author">${formData.author || "Autor Desconocido"}</p>
             <div class="barcode-container">
-              ${barcodeSvg}
+              ${activeCodeHTML}
             </div>
           </div>
           <script>
@@ -304,10 +354,41 @@ export function BookForm({
           {formData.isbn ? (
             <div className="text-center space-y-4 w-full flex flex-col items-center">
               <span className={`text-xs font-semibold uppercase tracking-wider block ${isDark ? "text-slate-400" : "text-slate-500"}`}>
-                Código de Barras Autogenerado
+                Código Autogenerado
               </span>
-              <div className="p-4 bg-white dark:bg-slate-800 rounded-lg shadow border border-slate-200 dark:border-slate-700 max-w-full overflow-hidden flex justify-center">
-                <svg ref={svgRef}></svg>
+              
+              <div className={`flex gap-1 w-full p-1 rounded-lg mb-2 ${isDark ? "bg-slate-900/50" : "bg-slate-200/50"}`}>
+                <button
+                  type="button"
+                  onClick={() => setCodeFormat("QR")}
+                  className={`flex-1 py-1.5 text-xs font-semibold rounded-md transition-all ${
+                    codeFormat === "QR"
+                      ? isDark ? "bg-slate-700 text-white shadow" : "bg-white text-slate-800 shadow"
+                      : isDark ? "text-slate-400 hover:text-slate-300" : "text-slate-500 hover:text-slate-700"
+                  }`}
+                >
+                  QR
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCodeFormat("BARCODE")}
+                  className={`flex-1 py-1.5 text-xs font-semibold rounded-md transition-all ${
+                    codeFormat === "BARCODE"
+                      ? isDark ? "bg-slate-700 text-white shadow" : "bg-white text-slate-800 shadow"
+                      : isDark ? "text-slate-400 hover:text-slate-300" : "text-slate-500 hover:text-slate-700"
+                  }`}
+                >
+                  Barras
+                </button>
+              </div>
+
+              <div className="p-4 bg-white dark:bg-slate-800 rounded-lg shadow border border-slate-200 dark:border-slate-700 w-full overflow-hidden flex flex-col items-center justify-center min-h-[160px]">
+                <div className={codeFormat === "BARCODE" ? "block" : "hidden"}>
+                  <svg ref={svgRef}></svg>
+                </div>
+                <div className={codeFormat === "QR" ? "block" : "hidden"}>
+                  {qrDataUrl && <img src={qrDataUrl} alt="Código QR" className="w-48 h-48 object-contain" />}
+                </div>
               </div>
               <button
                 type="button"
@@ -320,10 +401,10 @@ export function BookForm({
             </div>
           ) : (
             <div className="text-center text-slate-400 p-6 space-y-2">
-              <Barcode size={48} className="mx-auto text-slate-300 dark:text-slate-600" />
-              <p className="text-sm font-medium">Código de Barras en tiempo real</p>
+              <QrCode size={48} className="mx-auto text-slate-300 dark:text-slate-600" />
+              <p className="text-sm font-medium">Generador de Códigos</p>
               <p className="text-xs max-w-[220px]">
-                Introduce o escanea un ISBN para generar el código de barras del libro.
+                Introduce o escanea un ISBN para generar etiquetas QR o de Barras.
               </p>
             </div>
           )}

@@ -77,7 +77,7 @@ export function InventoryHeader({
           }`}
         >
           <Camera size={18} />
-          Escanear QR
+          Escanear Código
         </button>
 
         <button

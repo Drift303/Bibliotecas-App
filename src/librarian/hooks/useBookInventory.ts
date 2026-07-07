@@ -184,16 +184,27 @@ export function useBookInventory() {
     }
   };
 
-  const filteredBooks = books.filter(
-    (book) =>
-      book.title.toLowerCase().includes(search.toLowerCase()) ||
-      book.author.toLowerCase().includes(search.toLowerCase()) ||
-      book.isbn.toLowerCase().includes(search.toLowerCase()) ||
-      book.id.toString().toLowerCase().includes(search.toLowerCase())
-  );
+  const searchLower = search.toLowerCase().trim();
+  const exactIsbnMatch = books.filter(b => b.isbn && b.isbn.toLowerCase() === searchLower);
+
+  const filteredBooks = exactIsbnMatch.length > 0
+    ? exactIsbnMatch
+    : books.filter(
+        (book) =>
+          book.title.toLowerCase().includes(searchLower) ||
+          book.author.toLowerCase().includes(searchLower) ||
+          book.isbn.toLowerCase().includes(searchLower) ||
+          book.id.toString().toLowerCase().includes(searchLower)
+      );
 
   const handleScan = (decodedText: string) => {
-    setSearch(decodedText);
+    const exactMatch = books.find(b => b.isbn && b.isbn.toLowerCase() === decodedText.toLowerCase());
+    if (exactMatch) {
+      handleEdit(exactMatch.id);
+      setSearch("");
+    } else {
+      setSearch(decodedText);
+    }
     setShowScanner(false);
   };
 
