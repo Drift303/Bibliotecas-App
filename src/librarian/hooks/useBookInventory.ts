@@ -198,7 +198,13 @@ export function useBookInventory() {
       );
 
   const handleScan = (decodedText: string) => {
-    setSearch(decodedText);
+    const exactMatch = books.find(b => b.isbn && b.isbn.toLowerCase() === decodedText.toLowerCase());
+    if (exactMatch) {
+      handleEdit(exactMatch.id);
+      setSearch("");
+    } else {
+      setSearch(decodedText);
+    }
     setShowScanner(false);
   };
 
