@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import api from "../api";
 import DashboardLayout from "../components/DashboardLayout";
 import { useTheme } from "../context/ThemeContext";
+import { BarcodeScanner } from "../components/ui/BarcodeScanner";
+import { Camera } from "lucide-react";
 
 interface Student {
   id: string | number;
@@ -50,6 +52,8 @@ export default function QuickLoan() {
   const [statusType, setStatusType] = useState<"ok" | "error" | "info">("info");
   const [showStudentSuggestions, setShowStudentSuggestions] = useState(false);
   const [showBookSuggestions, setShowBookSuggestions] = useState(false);
+  const [showScanner, setShowScanner] = useState(false);
+  const [scanTarget, setScanTarget] = useState<"student" | "book" | null>(null);
 
   const [form, setForm] = useState({
     userId: "",
@@ -174,6 +178,26 @@ export default function QuickLoan() {
     setShowBookSuggestions(true);
   };
 
+  const handleScan = (decodedText: string) => {
+    if (scanTarget === "student") {
+      const exactMatch = students.find(s => s.studentId && s.studentId.toLowerCase() === decodedText.toLowerCase());
+      if (exactMatch) {
+        handleSelectStudent(exactMatch);
+      } else {
+        alert("Alumno no encontrado con esa matrícula.");
+      }
+    } else if (scanTarget === "book") {
+      const exactMatch = books.find(b => b.isbn && b.isbn.toLowerCase() === decodedText.toLowerCase());
+      if (exactMatch) {
+        handleSelectBook(exactMatch);
+      } else {
+        alert("Libro no encontrado o no disponible.");
+      }
+    }
+    setShowScanner(false);
+    setScanTarget(null);
+  };
+
   const handleSubmit = async () => {
     if (!form.userId || !form.bookId || !form.dueDate) {
       alert("Selecciona alumno, libro y fecha de devolución");
@@ -250,7 +274,21 @@ export default function QuickLoan() {
         <div className="grid md:grid-cols-2 gap-6">
           {/* SECCIÓN ALUMNO */}
           <div>
-            <h2 className={`text-lg font-semibold mb-4 ${isDark ? "text-blue-400" : "text-[#1E3A5F]"}`}>👤 Alumno</h2>
+            <h2 className={`flex justify-between items-center text-lg font-semibold mb-4 ${isDark ? "text-blue-400" : "text-[#1E3A5F]"}`}>
+              <span>👤 Alumno</span>
+              <button
+                type="button"
+                onClick={() => { setScanTarget("student"); setShowScanner(true); }}
+                className={`p-2 rounded-lg border transition-all flex items-center justify-center ${
+                  isDark
+                    ? "bg-slate-800 border-slate-600 text-slate-300 hover:bg-slate-700 hover:text-white"
+                    : "bg-slate-100 border-slate-200 text-slate-700 hover:bg-slate-200"
+                }`}
+                title="Escanear matrícula"
+              >
+                <Camera size={18} />
+              </button>
+            </h2>
 
             <div className="relative">
               <input
@@ -288,7 +326,21 @@ export default function QuickLoan() {
 
           {/* SECCIÓN LIBRO */}
           <div>
-            <h2 className={`text-lg font-semibold mb-4 ${isDark ? "text-blue-400" : "text-[#1E3A5F]"}`}>📚 Libro</h2>
+            <h2 className={`flex justify-between items-center text-lg font-semibold mb-4 ${isDark ? "text-blue-400" : "text-[#1E3A5F]"}`}>
+              <span>📚 Libro</span>
+              <button
+                type="button"
+                onClick={() => { setScanTarget("book"); setShowScanner(true); }}
+                className={`p-2 rounded-lg border transition-all flex items-center justify-center ${
+                  isDark
+                    ? "bg-slate-800 border-slate-600 text-slate-300 hover:bg-slate-700 hover:text-white"
+                    : "bg-slate-100 border-slate-200 text-slate-700 hover:bg-slate-200"
+                }`}
+                title="Escanear libro"
+              >
+                <Camera size={18} />
+              </button>
+            </h2>
 
             <div className="relative">
               <input
@@ -322,13 +374,11 @@ export default function QuickLoan() {
               </div>
             )}
 
-            {/* PRÓXIMAMENTE CÓDIGO DE BARRAS */}
-            <div className={`mt-4 p-3 rounded-lg border transition-colors ${isDark ? "bg-yellow-900 border-yellow-700" : "bg-yellow-50 border-yellow-200"}`}>
-              <p className={`text-sm font-medium ${isDark ? "text-yellow-200" : "text-yellow-700"}`}>🔜 Próximamente: Código de Barras</p>
-            </div>
-            <button className={`w-full mt-2 border px-4 py-2 rounded-lg transition-colors ${isDark ? "border-yellow-600 text-yellow-300 hover:bg-yellow-900/30" : "border-yellow-300 text-yellow-700 hover:bg-yellow-50"}`}>
-              escaneo 
-            </button>
+            {form.bookId && (
+              <div className={`mt-3 p-3 rounded-lg border transition-colors ${isDark ? "bg-green-900 border-green-700" : "bg-green-50 border-green-200"}`}>
+                <p className={`text-sm font-medium ${isDark ? "text-green-200" : "text-green-700"}`}>✅ {form.bookTitle}</p>
+              </div>
+            )}
           </div>
         </div>
 
@@ -394,6 +444,16 @@ export default function QuickLoan() {
           </tbody>
         </table>
       </div>
+
+      {showScanner && (
+        <BarcodeScanner
+          onScan={handleScan}
+          onClose={() => {
+            setShowScanner(false);
+            setScanTarget(null);
+          }}
+        />
+      )}
     </DashboardLayout>
   );
 }
