@@ -24,10 +24,10 @@ export function BarcodeModal({ isOpen, onClose, book, isDark }: BarcodeModalProp
       try {
         JsBarcode(svgRef.current, book.isbn, {
           format: "CODE128",
-          width: 1.5,
-          height: 40,
+          width: 2.5,
+          height: 70,
           displayValue: true,
-          fontSize: 12,
+          fontSize: 16,
           background: "transparent",
           lineColor: isDark ? "#ffffff" : "#000000",
         });
@@ -40,7 +40,7 @@ export function BarcodeModal({ isOpen, onClose, book, isDark }: BarcodeModalProp
   useEffect(() => {
     if (isOpen && book.isbn) {
       QRCode.toDataURL(book.isbn, {
-        width: 200,
+        width: 250,
         margin: 1,
         color: {
           dark: isDark ? "#ffffff" : "#000000",
@@ -62,7 +62,7 @@ export function BarcodeModal({ isOpen, onClose, book, isDark }: BarcodeModalProp
     let printQrUrl = "";
     try {
       printQrUrl = await QRCode.toDataURL(book.isbn, {
-        width: 120, // Smaller to fit
+        width: 250,
         margin: 1,
         color: {
           dark: "#000000",
@@ -78,10 +78,10 @@ export function BarcodeModal({ isOpen, onClose, book, isDark }: BarcodeModalProp
     try {
       JsBarcode(printSvgElement, book.isbn, {
         format: "CODE128",
-        width: 1.5,
-        height: 40,
+        width: 2.5,
+        height: 70,
         displayValue: true,
-        fontSize: 11,
+        fontSize: 14,
         background: "#ffffff",
         lineColor: "#000000",
       });
@@ -244,7 +244,7 @@ export function BarcodeModal({ isOpen, onClose, book, isDark }: BarcodeModalProp
               <svg ref={svgRef}></svg>
             </div>
             <div className={codeFormat === "QR" ? "block" : "hidden"}>
-              {qrDataUrl && <img src={qrDataUrl} alt="Código QR" className="w-28 h-28 object-contain" />}
+              {qrDataUrl && <img src={qrDataUrl} alt="Código QR" className="w-48 h-48 object-contain" />}
             </div>
           </div>
         </div>

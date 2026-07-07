@@ -45,10 +45,10 @@ export function BookForm({
       try {
         JsBarcode(svgRef.current, formData.isbn, {
           format: "CODE128",
-          width: 1.5,
-          height: 40,
+          width: 2.5,
+          height: 70,
           displayValue: true,
-          fontSize: 12,
+          fontSize: 16,
           background: isDark ? "#1e293b" : "#f8fafc",
           lineColor: isDark ? "#ffffff" : "#000000",
         });
@@ -61,7 +61,7 @@ export function BookForm({
   useEffect(() => {
     if (formData.isbn) {
       QRCode.toDataURL(formData.isbn, {
-        width: 150,
+        width: 250,
         margin: 1,
         color: {
           dark: isDark ? "#ffffff" : "#000000",
@@ -106,7 +106,7 @@ export function BookForm({
     let printQrUrl = "";
     try {
       printQrUrl = await QRCode.toDataURL(formData.isbn, {
-        width: 120, // Smaller size so both fit
+        width: 250,
         margin: 1,
         color: {
           dark: "#000000",
@@ -122,10 +122,10 @@ export function BookForm({
     try {
       JsBarcode(printSvgElement, formData.isbn, {
         format: "CODE128",
-        width: 1.5,
-        height: 40,
+        width: 2.5,
+        height: 70,
         displayValue: true,
-        fontSize: 11,
+        fontSize: 14,
         background: "#ffffff",
         lineColor: "#000000",
       });
@@ -387,7 +387,7 @@ export function BookForm({
                   <svg ref={svgRef}></svg>
                 </div>
                 <div className={codeFormat === "QR" ? "block" : "hidden"}>
-                  {qrDataUrl && <img src={qrDataUrl} alt="Código QR" className="w-28 h-28 object-contain" />}
+                  {qrDataUrl && <img src={qrDataUrl} alt="Código QR" className="w-48 h-48 object-contain" />}
                 </div>
               </div>
               <button

@@ -24,7 +24,7 @@ export function BarcodeScanner({ onScan, onClose }: BarcodeScannerProps) {
           {
             fps: 10,
             qrbox: (width, height) => {
-              const size = Math.min(width, height) * 0.75;
+              const size = Math.min(width, height) * 0.85;
               return { width: size, height: size };
             }
           },
@@ -102,7 +102,7 @@ export function BarcodeScanner({ onScan, onClose }: BarcodeScannerProps) {
             
             {/* Superposición de mira de escaneo premium */}
             <div className="absolute inset-0 border-[3px] border-transparent pointer-events-none flex items-center justify-center">
-              <div className="w-[70%] h-[70%] border border-white/20 rounded-xl relative shadow-[0_0_15px_rgba(59,130,246,0.1)]">
+              <div className="w-[85%] h-[85%] border border-white/20 rounded-xl relative shadow-[0_0_15px_rgba(59,130,246,0.1)]">
                 {/* Esquinas iluminadas */}
                 <div className="absolute -top-[2px] -left-[2px] w-6 h-6 border-t-[3px] border-l-[3px] border-blue-500 rounded-tl-lg"></div>
                 <div className="absolute -top-[2px] -right-[2px] w-6 h-6 border-t-[3px] border-r-[3px] border-blue-500 rounded-tr-lg"></div>
