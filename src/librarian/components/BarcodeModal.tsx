@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import QRCode from "qrcode";
+import JsBarcode from "jsbarcode";
 import { X, Printer } from "lucide-react";
 
 interface BarcodeModalProps {
@@ -15,6 +16,25 @@ interface BarcodeModalProps {
 
 export function BarcodeModal({ isOpen, onClose, book, isDark }: BarcodeModalProps) {
   const [qrDataUrl, setQrDataUrl] = useState<string>("");
+  const svgRef = useRef<SVGSVGElement | null>(null);
+
+  useEffect(() => {
+    if (isOpen && svgRef.current && book.isbn) {
+      try {
+        JsBarcode(svgRef.current, book.isbn, {
+          format: "CODE128",
+          width: 1.5,
+          height: 40,
+          displayValue: true,
+          fontSize: 12,
+          background: "transparent",
+          lineColor: isDark ? "#ffffff" : "#000000",
+        });
+      } catch (err) {
+        console.error("Error generating barcode:", err);
+      }
+    }
+  }, [book.isbn, isOpen, isDark]);
 
   useEffect(() => {
     if (isOpen && book.isbn) {
@@ -41,7 +61,7 @@ export function BarcodeModal({ isOpen, onClose, book, isDark }: BarcodeModalProp
     let printQrUrl = "";
     try {
       printQrUrl = await QRCode.toDataURL(book.isbn, {
-        width: 200,
+        width: 120, // Smaller to fit
         margin: 1,
         color: {
           dark: "#000000",
@@ -52,6 +72,22 @@ export function BarcodeModal({ isOpen, onClose, book, isDark }: BarcodeModalProp
       console.error("Error creating printable QR code:", err);
       return;
     }
+
+    const printSvgElement = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    try {
+      JsBarcode(printSvgElement, book.isbn, {
+        format: "CODE128",
+        width: 1.5,
+        height: 40,
+        displayValue: true,
+        fontSize: 11,
+        background: "#ffffff",
+        lineColor: "#000000",
+      });
+    } catch (err) {
+      console.error("Error creating printable barcode:", err);
+    }
+    const barcodeSvg = printSvgElement.outerHTML || "";
 
     const printWindow = window.open("", "_blank");
     if (!printWindow) {
@@ -113,10 +149,16 @@ export function BarcodeModal({ isOpen, onClose, book, isDark }: BarcodeModalProp
             .barcode-container {
               width: 100%;
               display: flex;
+              flex-direction: column;
               justify-content: center;
               align-items: center;
+              gap: 4px;
             }
             .barcode-container img {
+              max-width: 100%;
+              height: auto;
+            }
+            .barcode-container svg {
               max-width: 100%;
               height: auto;
             }
@@ -127,6 +169,7 @@ export function BarcodeModal({ isOpen, onClose, book, isDark }: BarcodeModalProp
             <h1 class="title">${book.title}</h1>
             <p class="author">${book.author}</p>
             <div class="barcode-container">
+              ${barcodeSvg}
               <img src="${printQrUrl}" alt="QR Code" />
             </div>
           </div>
@@ -158,7 +201,7 @@ export function BarcodeModal({ isOpen, onClose, book, isDark }: BarcodeModalProp
           <X size={20} />
         </button>
         <h3 className="text-xl font-bold mb-4">
-          Etiqueta de Código QR
+          Etiqueta del Libro
         </h3>
 
         <div className={`flex flex-col items-center p-6 rounded-2xl mb-6 border ${
@@ -169,8 +212,9 @@ export function BarcodeModal({ isOpen, onClose, book, isDark }: BarcodeModalProp
             <p className={`text-sm truncate px-2 ${isDark ? "text-slate-400" : "text-slate-500"}`}>{book.author}</p>
           </div>
 
-          <div className="p-4 bg-white dark:bg-slate-800 rounded-xl shadow-inner border border-slate-200 dark:border-slate-700 w-full flex justify-center">
-            {qrDataUrl && <img src={qrDataUrl} alt="Código QR" className="w-40 h-40 object-contain" />}
+          <div className="p-4 bg-white dark:bg-slate-800 rounded-xl shadow-inner border border-slate-200 dark:border-slate-700 w-full flex flex-col items-center gap-4">
+            <svg ref={svgRef}></svg>
+            {qrDataUrl && <img src={qrDataUrl} alt="Código QR" className="w-28 h-28 object-contain" />}
           </div>
         </div>
 
