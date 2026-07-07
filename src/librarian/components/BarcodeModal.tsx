@@ -16,6 +16,7 @@ interface BarcodeModalProps {
 
 export function BarcodeModal({ isOpen, onClose, book, isDark }: BarcodeModalProps) {
   const [qrDataUrl, setQrDataUrl] = useState<string>("");
+  const [codeFormat, setCodeFormat] = useState<"QR" | "BARCODE">("QR");
   const svgRef = useRef<SVGSVGElement | null>(null);
 
   useEffect(() => {
@@ -88,6 +89,10 @@ export function BarcodeModal({ isOpen, onClose, book, isDark }: BarcodeModalProp
       console.error("Error creating printable barcode:", err);
     }
     const barcodeSvg = printSvgElement.outerHTML || "";
+
+    const activeCodeHTML = codeFormat === "QR" 
+      ? `<img src="${printQrUrl}" alt="QR Code" />` 
+      : `${barcodeSvg}`;
 
     const printWindow = window.open("", "_blank");
     if (!printWindow) {
@@ -169,8 +174,7 @@ export function BarcodeModal({ isOpen, onClose, book, isDark }: BarcodeModalProp
             <h1 class="title">${book.title}</h1>
             <p class="author">${book.author}</p>
             <div class="barcode-container">
-              ${barcodeSvg}
-              <img src="${printQrUrl}" alt="QR Code" />
+              ${activeCodeHTML}
             </div>
           </div>
           <script>
@@ -207,14 +211,41 @@ export function BarcodeModal({ isOpen, onClose, book, isDark }: BarcodeModalProp
         <div className={`flex flex-col items-center p-6 rounded-2xl mb-6 border ${
           isDark ? "bg-slate-950 border-slate-800" : "bg-slate-50 border-slate-100"
         }`}>
-          <div className="text-center w-full mb-6">
+          <div className="text-center w-full mb-4">
             <h4 className="font-semibold text-lg truncate px-2">{book.title}</h4>
             <p className={`text-sm truncate px-2 ${isDark ? "text-slate-400" : "text-slate-500"}`}>{book.author}</p>
           </div>
 
-          <div className="p-4 bg-white dark:bg-slate-800 rounded-xl shadow-inner border border-slate-200 dark:border-slate-700 w-full flex flex-col items-center gap-4">
-            <svg ref={svgRef}></svg>
-            {qrDataUrl && <img src={qrDataUrl} alt="Código QR" className="w-28 h-28 object-contain" />}
+          <div className={`flex gap-1 w-full p-1 rounded-lg mb-4 ${isDark ? "bg-slate-900/50" : "bg-slate-200/50"}`}>
+            <button
+              onClick={() => setCodeFormat("QR")}
+              className={`flex-1 py-1.5 text-xs font-semibold rounded-md transition-all ${
+                codeFormat === "QR"
+                  ? isDark ? "bg-slate-700 text-white shadow" : "bg-white text-slate-800 shadow"
+                  : isDark ? "text-slate-400 hover:text-slate-300" : "text-slate-500 hover:text-slate-700"
+              }`}
+            >
+              QR
+            </button>
+            <button
+              onClick={() => setCodeFormat("BARCODE")}
+              className={`flex-1 py-1.5 text-xs font-semibold rounded-md transition-all ${
+                codeFormat === "BARCODE"
+                  ? isDark ? "bg-slate-700 text-white shadow" : "bg-white text-slate-800 shadow"
+                  : isDark ? "text-slate-400 hover:text-slate-300" : "text-slate-500 hover:text-slate-700"
+              }`}
+            >
+              Barras
+            </button>
+          </div>
+
+          <div className="p-4 bg-white dark:bg-slate-800 rounded-xl shadow-inner border border-slate-200 dark:border-slate-700 w-full overflow-hidden flex flex-col items-center justify-center min-h-[160px]">
+            <div className={codeFormat === "BARCODE" ? "block" : "hidden"}>
+              <svg ref={svgRef}></svg>
+            </div>
+            <div className={codeFormat === "QR" ? "block" : "hidden"}>
+              {qrDataUrl && <img src={qrDataUrl} alt="Código QR" className="w-28 h-28 object-contain" />}
+            </div>
           </div>
         </div>
 

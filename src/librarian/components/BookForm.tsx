@@ -37,6 +37,7 @@ export function BookForm({
 }: BookFormProps) {
   const [showScanner, setShowScanner] = useState(false);
   const [qrDataUrl, setQrDataUrl] = useState<string>("");
+  const [codeFormat, setCodeFormat] = useState<"QR" | "BARCODE">("QR");
   const svgRef = useRef<SVGSVGElement | null>(null);
 
   useEffect(() => {
@@ -133,6 +134,10 @@ export function BookForm({
     }
     const barcodeSvg = printSvgElement.outerHTML || "";
 
+    const activeCodeHTML = codeFormat === "QR" 
+      ? `<img src="${printQrUrl}" alt="QR Code" />` 
+      : `${barcodeSvg}`;
+
     const printWindow = window.open("", "_blank");
     if (!printWindow) {
       alert("Por favor, permite las ventanas emergentes para poder imprimir el código QR.");
@@ -213,8 +218,7 @@ export function BookForm({
             <h1 class="title">${formData.title || "Sin título"}</h1>
             <p class="author">${formData.author || "Autor Desconocido"}</p>
             <div class="barcode-container">
-              ${barcodeSvg}
-              <img src="${printQrUrl}" alt="QR Code" />
+              ${activeCodeHTML}
             </div>
           </div>
           <script>
@@ -350,11 +354,41 @@ export function BookForm({
           {formData.isbn ? (
             <div className="text-center space-y-4 w-full flex flex-col items-center">
               <span className={`text-xs font-semibold uppercase tracking-wider block ${isDark ? "text-slate-400" : "text-slate-500"}`}>
-                Códigos Autogenerados
+                Código Autogenerado
               </span>
-              <div className="p-4 bg-white dark:bg-slate-800 rounded-lg shadow border border-slate-200 dark:border-slate-700 max-w-full overflow-hidden flex flex-col items-center gap-4">
-                <svg ref={svgRef}></svg>
-                {qrDataUrl && <img src={qrDataUrl} alt="Código QR" className="w-28 h-28 object-contain" />}
+              
+              <div className={`flex gap-1 w-full p-1 rounded-lg mb-2 ${isDark ? "bg-slate-900/50" : "bg-slate-200/50"}`}>
+                <button
+                  type="button"
+                  onClick={() => setCodeFormat("QR")}
+                  className={`flex-1 py-1.5 text-xs font-semibold rounded-md transition-all ${
+                    codeFormat === "QR"
+                      ? isDark ? "bg-slate-700 text-white shadow" : "bg-white text-slate-800 shadow"
+                      : isDark ? "text-slate-400 hover:text-slate-300" : "text-slate-500 hover:text-slate-700"
+                  }`}
+                >
+                  QR
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCodeFormat("BARCODE")}
+                  className={`flex-1 py-1.5 text-xs font-semibold rounded-md transition-all ${
+                    codeFormat === "BARCODE"
+                      ? isDark ? "bg-slate-700 text-white shadow" : "bg-white text-slate-800 shadow"
+                      : isDark ? "text-slate-400 hover:text-slate-300" : "text-slate-500 hover:text-slate-700"
+                  }`}
+                >
+                  Barras
+                </button>
+              </div>
+
+              <div className="p-4 bg-white dark:bg-slate-800 rounded-lg shadow border border-slate-200 dark:border-slate-700 w-full overflow-hidden flex flex-col items-center justify-center min-h-[160px]">
+                <div className={codeFormat === "BARCODE" ? "block" : "hidden"}>
+                  <svg ref={svgRef}></svg>
+                </div>
+                <div className={codeFormat === "QR" ? "block" : "hidden"}>
+                  {qrDataUrl && <img src={qrDataUrl} alt="Código QR" className="w-28 h-28 object-contain" />}
+                </div>
               </div>
               <button
                 type="button"
@@ -368,9 +402,9 @@ export function BookForm({
           ) : (
             <div className="text-center text-slate-400 p-6 space-y-2">
               <QrCode size={48} className="mx-auto text-slate-300 dark:text-slate-600" />
-              <p className="text-sm font-medium">Códigos en tiempo real</p>
+              <p className="text-sm font-medium">Generador de Códigos</p>
               <p className="text-xs max-w-[220px]">
-                Introduce o escanea un ISBN para generar el QR y Código de Barras del libro.
+                Introduce o escanea un ISBN para generar etiquetas QR o de Barras.
               </p>
             </div>
           )}
