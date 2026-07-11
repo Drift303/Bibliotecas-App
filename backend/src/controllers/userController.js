@@ -91,6 +91,7 @@ const createUser = async (req, res) => {
         name: created.name,
         email: created.email,
         tempPassword,
+        credentialImage: data.credentialImage,
       }).then(result => {
         if (!result.success) {
           console.warn('No se pudo enviar correo de bienvenida:', result.error);

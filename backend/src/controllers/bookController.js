@@ -2,6 +2,7 @@ const prisma = require('../config/prismaClient');
 const {
   createBookSchema,
   updateBookSchema,
+  createBooksBulkSchema,
 } = require('../validators/bookValidators');
 
 const getBooks = async (req, res) => {
@@ -181,9 +182,59 @@ const deleteBook = async (req, res) => {
   }
 };
 
+const createBooksBulk = async (req, res) => {
+  try {
+    const parsed = createBooksBulkSchema.safeParse(req.body);
+
+    if (!parsed.success) {
+      return res.status(400).json({
+        errors: parsed.error.format(),
+      });
+    }
+
+    const tenantId = req.user && req.user.tenantId;
+
+    if (!tenantId) {
+      return res.status(401).json({
+        error: 'Missing tenant context',
+      });
+    }
+
+    const booksData = parsed.data.books.map((data) => ({
+      tenantId,
+      title: data.title.trim(),
+      author: data.author.trim(),
+      locationHall: data.locationHall.trim(),
+      locationShelf: data.locationShelf.trim(),
+      isbn: data.isbn ? data.isbn.trim() : null,
+      publisher: data.publisher ? data.publisher.trim() : null,
+      statusPhysical: data.statusPhysical || 'GOOD',
+      available: data.status === 'AVAILABLE' || data.available === true,
+      status: data.status || 'AVAILABLE',
+      statusLogical: 'ACTIVE'
+    }));
+
+    const created = await prisma.book.createMany({
+      data: booksData,
+      skipDuplicates: true, // Prisma ignora conflictos si los hay a nivel BD
+    });
+
+    res.status(201).json({
+      success: true,
+      data: { count: created.count },
+    });
+  } catch (err) {
+    console.error('createBooksBulk error', err);
+    res.status(500).json({
+      error: 'Failed to create books in bulk',
+    });
+  }
+};
+
 module.exports = {
   getBooks,
   createBook,
   updateBook,
   deleteBook,
+  createBooksBulk,
 };

@@ -6,23 +6,25 @@ import { X, Printer } from "lucide-react";
 interface BarcodeModalProps {
   isOpen: boolean;
   onClose: () => void;
-  book: {
+  books: {
     isbn: string;
     title: string;
     author: string;
-  };
+  }[];
   isDark: boolean;
 }
 
-export function BarcodeModal({ isOpen, onClose, book, isDark }: BarcodeModalProps) {
+export function BarcodeModal({ isOpen, onClose, books, isDark }: BarcodeModalProps) {
   const [qrDataUrl, setQrDataUrl] = useState<string>("");
   const [codeFormat, setCodeFormat] = useState<"QR" | "BARCODE">("QR");
   const svgRef = useRef<SVGSVGElement | null>(null);
 
+  const previewBook = books && books.length > 0 ? books[0] : null;
+
   useEffect(() => {
-    if (isOpen && svgRef.current && book.isbn) {
+    if (isOpen && svgRef.current && previewBook && previewBook.isbn) {
       try {
-        JsBarcode(svgRef.current, book.isbn, {
+        JsBarcode(svgRef.current, previewBook.isbn, {
           format: "CODE128",
           width: 2.5,
           height: 70,
@@ -35,11 +37,11 @@ export function BarcodeModal({ isOpen, onClose, book, isDark }: BarcodeModalProp
         console.error("Error generating barcode:", err);
       }
     }
-  }, [book.isbn, isOpen, isDark]);
+  }, [previewBook, isOpen, isDark]);
 
   useEffect(() => {
-    if (isOpen && book.isbn) {
-      QRCode.toDataURL(book.isbn, {
+    if (isOpen && previewBook && previewBook.isbn) {
+      QRCode.toDataURL(previewBook.isbn, {
         width: 250,
         margin: 1,
         color: {
@@ -54,135 +56,137 @@ export function BarcodeModal({ isOpen, onClose, book, isDark }: BarcodeModalProp
         console.error("Error generating QR code:", err);
       });
     }
-  }, [book.isbn, isOpen, isDark]);
+  }, [previewBook, isOpen, isDark]);
 
-  if (!isOpen) return null;
+  if (!isOpen || !previewBook) return null;
 
   const handlePrint = async () => {
-    let printQrUrl = "";
-    try {
-      printQrUrl = await QRCode.toDataURL(book.isbn, {
-        width: 250,
-        margin: 1,
-        color: {
-          dark: "#000000",
-          light: "#ffffff",
-        }
-      });
-    } catch (err) {
-      console.error("Error creating printable QR code:", err);
-      return;
-    }
-
-    const printSvgElement = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-    try {
-      JsBarcode(printSvgElement, book.isbn, {
-        format: "CODE128",
-        width: 2.5,
-        height: 70,
-        displayValue: true,
-        fontSize: 14,
-        background: "#ffffff",
-        lineColor: "#000000",
-      });
-    } catch (err) {
-      console.error("Error creating printable barcode:", err);
-    }
-    const barcodeSvg = printSvgElement.outerHTML || "";
-
-    const activeCodeHTML = codeFormat === "QR" 
-      ? `<img src="${printQrUrl}" alt="QR Code" />` 
-      : `${barcodeSvg}`;
-
     const printWindow = window.open("", "_blank");
     if (!printWindow) {
-      alert("Por favor, permite las ventanas emergentes para poder imprimir el código QR.");
+      alert("Por favor, permite las ventanas emergentes para poder imprimir.");
       return;
     }
+
+    let labelsHTML = "";
+
+    for (const b of books) {
+      let printQrUrl = "";
+      try {
+        printQrUrl = await QRCode.toDataURL(b.isbn, {
+          width: 200,
+          margin: 1,
+          color: { dark: "#000000", light: "#ffffff" }
+        });
+      } catch (err) {}
+
+      const printSvgElement = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      try {
+        JsBarcode(printSvgElement, b.isbn, {
+          format: "CODE128",
+          width: 2,
+          height: 50,
+          displayValue: true,
+          fontSize: 12,
+          background: "#ffffff",
+          lineColor: "#000000",
+          margin: 0
+        });
+      } catch (err) {}
+      const barcodeSvg = printSvgElement.outerHTML || "";
+
+      const activeCodeHTML = codeFormat === "QR" 
+        ? `<img src="${printQrUrl}" alt="QR Code" />` 
+        : `${barcodeSvg}`;
+
+      labelsHTML += `
+        <div class="label-container">
+          <h1 class="title">${b.title}</h1>
+          <p class="author">${b.author}</p>
+          <div class="barcode-container">
+            ${activeCodeHTML}
+          </div>
+        </div>
+      `;
+    }
+
     printWindow.document.write(`
       <html>
         <head>
-          <title>Imprimir Código QR - ${book.title}</title>
+          <title>Imprimir Etiquetas</title>
           <style>
             @page {
-              size: 60mm 60mm;
-              margin: 0;
+              size: A4;
+              margin: 10mm;
             }
             body {
-              display: flex;
-              flex-direction: column;
-              align-items: center;
-              justify-content: center;
               font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
               margin: 0;
-              padding: 10px;
-              height: 100vh;
-              box-sizing: border-box;
+              padding: 0;
+            }
+            .grid-container {
+              display: grid;
+              grid-template-columns: repeat(auto-fill, minmax(50mm, 1fr));
+              gap: 5mm;
+              justify-content: start;
             }
             .label-container {
               text-align: center;
               border: 1px dashed #ccc;
-              border-radius: 8px;
-              padding: 10px;
-              width: 100%;
-              max-width: 200px;
+              padding: 5px;
+              width: 50mm;
+              height: 35mm;
               display: flex;
               flex-direction: column;
               align-items: center;
               justify-content: center;
               box-sizing: border-box;
+              page-break-inside: avoid;
             }
             .title {
-              font-size: 11px;
+              font-size: 9px;
               font-weight: bold;
               margin: 0 0 2px 0;
               text-overflow: ellipsis;
               overflow: hidden;
               white-space: nowrap;
-              max-width: 180px;
-              color: #1a1a1a;
+              max-width: 48mm;
+              color: #000;
             }
             .author {
-              font-size: 9px;
-              color: #555;
-              margin: 0 0 8px 0;
+              font-size: 7px;
+              color: #333;
+              margin: 0 0 4px 0;
               text-overflow: ellipsis;
               overflow: hidden;
               white-space: nowrap;
-              max-width: 180px;
+              max-width: 48mm;
             }
             .barcode-container {
               width: 100%;
               display: flex;
-              flex-direction: column;
               justify-content: center;
               align-items: center;
-              gap: 4px;
             }
             .barcode-container img {
-              max-width: 100%;
-              height: auto;
+              max-width: 25mm;
+              max-height: 25mm;
             }
             .barcode-container svg {
-              max-width: 100%;
-              height: auto;
+              max-width: 48mm;
+              max-height: 15mm;
             }
           </style>
         </head>
         <body>
-          <div class="label-container">
-            <h1 class="title">${book.title}</h1>
-            <p class="author">${book.author}</p>
-            <div class="barcode-container">
-              ${activeCodeHTML}
-            </div>
+          <div class="grid-container">
+            ${labelsHTML}
           </div>
           <script>
             window.onload = function() {
               setTimeout(function() {
                 window.print();
                 window.close();
-              }, 300);
+              }, 500);
             };
           </script>
         </body>
@@ -205,15 +209,20 @@ export function BarcodeModal({ isOpen, onClose, book, isDark }: BarcodeModalProp
           <X size={20} />
         </button>
         <h3 className="text-xl font-bold mb-4">
-          Etiqueta del Libro
+          {books.length > 1 ? `Imprimir ${books.length} Etiquetas` : "Etiqueta del Libro"}
         </h3>
 
         <div className={`flex flex-col items-center p-6 rounded-2xl mb-6 border ${
           isDark ? "bg-slate-950 border-slate-800" : "bg-slate-50 border-slate-100"
         }`}>
           <div className="text-center w-full mb-4">
-            <h4 className="font-semibold text-lg truncate px-2">{book.title}</h4>
-            <p className={`text-sm truncate px-2 ${isDark ? "text-slate-400" : "text-slate-500"}`}>{book.author}</p>
+            <h4 className="font-semibold text-lg truncate px-2">{previewBook.title}</h4>
+            <p className={`text-sm truncate px-2 ${isDark ? "text-slate-400" : "text-slate-500"}`}>{previewBook.author}</p>
+            {books.length > 1 && (
+              <p className={`text-xs mt-2 font-medium ${isDark ? "text-blue-400" : "text-blue-600"}`}>
+                (+ {books.length - 1} libros más)
+              </p>
+            )}
           </div>
 
           <div className={`flex gap-1 w-full p-1 rounded-lg mb-4 ${isDark ? "bg-slate-900/50" : "bg-slate-200/50"}`}>

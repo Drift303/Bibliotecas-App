@@ -8,6 +8,7 @@ const createUserSchema = z.object({
   department: z.string().min(1),
   barcode: z.string().min(1),
   password: z.string().min(6).optional(),
+  credentialImage: z.string().optional(),
 });
 
 const updateUserSchema = z.object({

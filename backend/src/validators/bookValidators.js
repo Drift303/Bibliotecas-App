@@ -7,12 +7,17 @@ const createBookSchema = z.object({
   locationShelf: z.string().min(1),
   isbn: z.string().optional(),
   publisher: z.string().optional(),
-  statusPhysical: z.enum(['GOOD', 'DAMAGED', 'LOST']).optional(),
+  statusPhysical: z.enum(['GOOD', 'DAMAGED', 'LOST', 'DISCARDED']).optional(),
 });
 
 const updateBookSchema = createBookSchema.partial();
 
+const createBooksBulkSchema = z.object({
+  books: z.array(createBookSchema),
+});
+
 module.exports = {
   createBookSchema,
   updateBookSchema,
+  createBooksBulkSchema,
 };

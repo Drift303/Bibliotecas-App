@@ -1,4 +1,4 @@
-import { AlertCircle, CheckCircle, FileSpreadsheet, Camera, Plus } from "lucide-react";
+import { AlertCircle, CheckCircle, FileSpreadsheet, Camera, Plus, Barcode } from "lucide-react";
 import React from "react";
 
 interface InventoryHeaderProps {
@@ -10,6 +10,8 @@ interface InventoryHeaderProps {
   onFileUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
   onOpenScanner: () => void;
   onAddBook: () => void;
+  selectedPrintCount: number;
+  onPrintSelected: () => void;
 }
 
 export function InventoryHeader({
@@ -21,6 +23,8 @@ export function InventoryHeader({
   onFileUpload,
   onOpenScanner,
   onAddBook,
+  selectedPrintCount,
+  onPrintSelected,
 }: InventoryHeaderProps) {
   return (
     <div className="flex flex-col md:flex-row md:justify-between md:items-center mb-8 gap-4">
@@ -79,6 +83,20 @@ export function InventoryHeader({
           <Camera size={18} />
           Escanear Código
         </button>
+
+        {selectedPrintCount > 0 && (
+          <button
+            onClick={onPrintSelected}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all shadow-sm ${
+              isDark
+                ? "bg-purple-600/20 text-purple-400 border border-purple-500/30 hover:bg-purple-600/30"
+                : "bg-purple-50 text-purple-700 border border-purple-200 hover:bg-purple-100"
+            }`}
+          >
+            <Barcode size={18} />
+            Imprimir ({selectedPrintCount})
+          </button>
+        )}
 
         <button
           onClick={onAddBook}

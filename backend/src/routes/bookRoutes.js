@@ -6,6 +6,7 @@ const {
   createBook,
   updateBook,
   deleteBook,
+  createBooksBulk,
 } = require('../controllers/bookController');
 
 const authGuard = require('../middlewares/authGuard');
@@ -13,6 +14,7 @@ const saasGuard = require('../middlewares/saasGuard');
 
 router.get('/', authGuard, saasGuard, getBooks);
 router.post('/', authGuard, saasGuard, createBook);
+router.post('/bulk', authGuard, saasGuard, createBooksBulk);
 
 router.put('/:id', authGuard, saasGuard, updateBook);
 router.delete('/:id', authGuard, saasGuard, deleteBook);
