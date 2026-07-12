@@ -5,13 +5,25 @@ interface BookProps {
     author: string;
     status: string;
   };
+  onClick?: () => void;
 }
 
 export default function BookCard({
   book,
+  onClick,
 }: BookProps) {
   return (
     <div
+      role={onClick ? "button" : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onClick={onClick}
+      onKeyDown={(event) => {
+        if (!onClick) return;
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onClick();
+        }
+      }}
       className="
         bg-white/60 dark:bg-slate-900/60
         backdrop-blur-2xl
@@ -26,6 +38,8 @@ export default function BookCard({
         hover:-translate-y-2
         hover:border-blue-400 dark:hover:border-blue-700/50
         hover:bg-white/80 dark:hover:bg-slate-900/80
+        cursor-pointer
+        focus:outline-none focus:ring-2 focus:ring-blue-500/60
       "
     >
       <h2 className="font-bold text-lg text-slate-900 dark:text-white mb-2 line-clamp-2">
