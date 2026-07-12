@@ -3,6 +3,7 @@ import api from "../api";
 import BookCard from "../cards/BookCard";
 import LogoutButton from "../components/LogoutButton";
 import { ThemeToggleButton } from "../components/ui/ThemeToggleButton";
+import { BookX} from "lucide-react";
 
 type AvailabilityFilter = "todos" | "disponibles" | "prestados";
 type PhysicalStatus = "GOOD" | "DAMAGED" | "LOST";
@@ -375,7 +376,7 @@ function EmptyState({
   return (
     <div className={`rounded-3xl border border-dashed p-8 text-center ${tone === "error" ? "border-red-300 bg-red-50/60 text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-300" : "border-slate-300 bg-slate-50/50 text-slate-700 dark:border-slate-700 dark:bg-slate-800/20 dark:text-slate-300"}`}>
       <div className="mx-auto mb-4 flex h-10 w-10 items-center justify-center rounded-2xl border border-current opacity-70">
-        <span className="text-xl font-bold">B</span>
+        <BookX className="h-5 w-5"/>
       </div>
       <p className="text-lg font-semibold">{title}</p>
       <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">{subtitle}</p>
