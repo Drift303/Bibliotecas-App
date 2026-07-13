@@ -3,6 +3,12 @@ import api from "../api";
 import BookCard from "../cards/BookCard";
 import LogoutButton from "../components/LogoutButton";
 import { ThemeToggleButton } from "../components/ui/ThemeToggleButton";
+import { 
+  BookX,
+  X,
+  MapPin,
+  BookMarked,
+  } from "lucide-react";
 
 type AvailabilityFilter = "todos" | "disponibles" | "prestados";
 type PhysicalStatus = "GOOD" | "DAMAGED" | "LOST";
@@ -161,7 +167,7 @@ export default function Catalog() {
           </div>
         </div>
 
-        <div className="mb-6 flex flex-wrap gap-3">
+        <div className="mb-8 flex flex-wrap items-center gap-3 rounded-2xl border border-white/40 dark:border-slate-800/40 bg-white/40 dark:bg-slate-900/40 backdrop-blur-md p-2 w-fit">
           {[
             { value: "todos", label: "Todos" },
             { value: "disponibles", label: "Disponibles" },
@@ -171,11 +177,23 @@ export default function Catalog() {
               key={item.value}
               type="button"
               onClick={() => setFilter(item.value as AvailabilityFilter)}
-              className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
-                filter === item.value
-                  ? "bg-blue-700 text-white shadow-sm"
-                  : "border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800"
-              }`}
+              className={`
+                rounded-full
+                px-5
+                py-2.5
+                text-sm
+                font-semibold
+                transition-all
+                duration-300
+                ease-in-out
+                transform
+                hover:scale-105
+                ${
+                  filter === item.value
+                  ? "bg-blue-700 text-white shadow-lg shadow-blue-700/30"
+                  : "bg-transparent border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:border-blue-500"
+                }
+            `}
             >
               {item.label}
             </button>
@@ -222,15 +240,15 @@ export default function Catalog() {
                 </p>
               )}
             </div>
-            <div className={`rounded-2xl px-4 py-2 text-sm font-bold ${totalFines > 0 ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300" : "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300"}`}>
+            <div className={`rounded-2xl px-5 py-3 text-sm font-bold shadow-sm ${totalFines > 0 ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300" : "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300"}`}>
               Multas: {money.format(totalFines)}
             </div>
           </div>
 
-          <div className="overflow-hidden rounded-lg border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900">
+          <div className="overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-lg shadow-slate-200/40 dark:shadow-black/30 transition-all">
             <div className="overflow-x-auto">
               <table className="w-full min-w-[720px]">
-                <thead className="border-b border-slate-200 bg-slate-100 text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100">
+                <thead className="border-b border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100">
                   <tr>
                     <th className="p-3 text-left font-semibold">Libro</th>
                     <th className="p-3 text-left font-semibold">Fecha prestamo</th>
@@ -243,7 +261,7 @@ export default function Catalog() {
                   {loans.map((loan, index) => (
                     <tr
                       key={loan.id}
-                      className={`border-b border-slate-100 transition-colors dark:border-slate-800 ${
+                      className={`border-b border-slate-100 dark:border-slate-800 transition-all duration-300 ${
                         index % 2 === 0
                           ? "bg-white hover:bg-slate-50 dark:bg-slate-900 dark:hover:bg-slate-800"
                           : "bg-slate-50 hover:bg-slate-100 dark:bg-slate-800/50 dark:hover:bg-slate-800"
@@ -267,8 +285,11 @@ export default function Catalog() {
 
                   {!loadingLoans && loans.length === 0 && (
                     <tr>
-                      <td colSpan={5} className="p-8 text-center font-medium text-slate-500 dark:text-slate-400">
-                        No tienes prestamos registrados.
+                      <td colSpan={5} className="p-8">
+                        <EmptyState
+                          title="No tienes préstamos registrados"
+                          subtitle="Cuando solicites un libro aparecerá aquí tu historial."
+                        />
                       </td>
                     </tr>
                   )}
@@ -358,8 +379,14 @@ function physicalStatusClass(status: PhysicalStatus) {
 }
 
 function loanStatusClass(status: LoanStatus) {
-  if (status === "Activo") return "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300";
-  if (status === "Vencido") return "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300";
+  if (status === "Activo") {
+    return "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300";
+  }
+
+  if (status === "Vencido") {
+    return "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300";
+  }
+
   return "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300";
 }
 
@@ -374,10 +401,10 @@ function EmptyState({
 }) {
   return (
     <div className={`rounded-3xl border border-dashed p-8 text-center ${tone === "error" ? "border-red-300 bg-red-50/60 text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-300" : "border-slate-300 bg-slate-50/50 text-slate-700 dark:border-slate-700 dark:bg-slate-800/20 dark:text-slate-300"}`}>
-      <div className="mx-auto mb-4 flex h-10 w-10 items-center justify-center rounded-2xl border border-current opacity-70">
-        <span className="text-xl font-bold">B</span>
+      <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-full border border-slate-300 dark:border-slate-700 bg-white/60 dark:bg-slate-900/60 shadow-sm">
+        <BookX className="h-8 w-8 text-slate-500 dark:text-slate-400 animate-pulse"/>
       </div>
-      <p className="text-lg font-semibold">{title}</p>
+      <p className="text-xl font-semibold text-slate-700 dark:text-slate-300">{title}</p>
       <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">{subtitle}</p>
     </div>
   );
@@ -386,7 +413,7 @@ function EmptyState({
 function BookDetailModal({ book, onClose }: { book: Book; onClose: () => void }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-6">
-      <div className="w-full max-w-md rounded-3xl border border-white/50 bg-white/80 p-6 shadow-2xl backdrop-blur-2xl dark:border-slate-800/50 dark:bg-slate-900/80">
+      <div className="w-full max-w-md rounded-3xl border border-white/50 bg-white/70 dark:bg-slate-900/70 backdrop-blur-2xl shadow-2xl p-6">
         <div className="mb-5 flex items-start justify-between gap-4">
           <div>
             <h2 className="text-2xl font-bold text-slate-900 dark:text-white">{book.title}</h2>
@@ -398,23 +425,35 @@ function BookDetailModal({ book, onClose }: { book: Book; onClose: () => void })
             aria-label="Cerrar detalle"
             className="rounded-full p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white"
           >
-            <span aria-hidden="true" className="text-lg leading-none">
-              x
-            </span>
+            <X className="w-5 h-5"/>
           </button>
         </div>
 
         <div className="space-y-4 text-sm text-slate-700 dark:text-slate-300">
           <DetailRow label="ISBN" value={book.isbn} />
           <DetailRow label="Editorial" value={book.publisher || "Sin especificar"} />
-          <DetailRow label="Pasillo" value={book.locationHall} />
-          <DetailRow label="Estante" value={book.locationShelf} />
+          <div className="rounded-2xl bg-blue-50/70 dark:bg-slate-800/60 p-4 border border-blue-100 dark:border-slate-700">
+            <p className="font-semibold mb-3 flex items-center gap-2">
+               <MapPin className="w-5 h-5 text-blue-600"/>
+                Ubicación física
+            </p>
+
+          <div className="flex justify-between">
+            <span>Pasillo</span>
+            <span className="font-bold">{book.locationHall}</span>
+          </div>
+
+          <div className="mt-2 flex justify-between">
+            <span>Estante</span>
+            <span className="font-bold">{book.locationShelf}</span>
+          </div>
+        </div>
 
           <div className="flex flex-wrap gap-2 pt-2">
-            <span className={`inline-block rounded-full border px-3 py-1 text-xs font-semibold ${book.available ? "bg-emerald-100/80 text-emerald-700 border-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-800/50" : "bg-amber-100/80 text-amber-700 border-amber-200 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-800/50"}`}>
+            <span className={`inline-block rounded-full border px-5 py-2 text-sm font-bold ${book.available ? "bg-emerald-100/80 text-emerald-700 border-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-800/50" : "bg-amber-100/80 text-amber-700 border-amber-200 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-800/50"}`}>
               {book.available ? "Disponible" : "Prestado"}
             </span>
-            <span className={`inline-block rounded-full border px-3 py-1 text-xs font-semibold ${physicalStatusClass(book.statusPhysical)}`}>
+            <span className={`inline-block rounded-full border px-5 py-2 text-sm font-bold ${physicalStatusClass(book.statusPhysical)}`}>
               {physicalStatusLabel(book.statusPhysical)}
             </span>
           </div>
