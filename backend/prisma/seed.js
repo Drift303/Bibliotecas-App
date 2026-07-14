@@ -25,6 +25,17 @@ async function main() {
   const users = [
     {
       tenantId: tenantActive.id,
+      name: 'Admin Superadmin',
+      email: 'admin@activa.edu.mx',
+      cct: 'CCT-ACT-ADMIN-01',
+      studentId: null,
+      department: 'Administration',
+      barcode: 'ADM-ACT-0001',
+      password: await bcrypt.hash('Admin123!', saltRounds),
+      role: 'superadmin',
+    },
+    {
+      tenantId: tenantActive.id,
       name: 'Ana Bibliotecaria',
       email: 'ana@activa.edu.mx',
       cct: 'CCT-ACT-001',

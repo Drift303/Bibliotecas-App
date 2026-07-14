@@ -12,6 +12,7 @@ const syncRoutes = require('./src/routes/syncRoutes');
 const bookRoutes = require('./src/routes/bookRoutes');
 const loanRoutes = require('./src/routes/loanRoutes');
 const userRoutes = require('./src/routes/userRoutes');
+const tenantRoutes = require('./src/routes/tenantRoutes');
 
 const app = express();
 
@@ -43,6 +44,7 @@ app.use('/api/sync', syncRoutes);
 app.use('/api/books', bookRoutes);
 app.use('/api/loans', loanRoutes);
 app.use('/api/users', userRoutes);
+app.use('/api/tenants', tenantRoutes);
 
 app.get('/api/test-db', async (req, res) => {
   try {
