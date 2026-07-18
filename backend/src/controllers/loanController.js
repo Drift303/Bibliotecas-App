@@ -17,11 +17,14 @@ const getLoans = async (req, res) => {
     if (!tenantId) return res.status(401).json({ error: 'Missing tenant context' });
 
     // Filtro opcional por estado: /api/loans?status=ACTIVE o ?status=RETURNED
-    const { status } = req.query;
-    const where = { tenantId };
-    if (status === 'ACTIVE' || status === 'RETURNED') {
-      where.status = status;
-    }
+   const { status } = req.query;
+const where = { tenantId };
+if (req.user.role === 'student') {
+  where.userId = req.user.id;
+}
+if (status === 'ACTIVE' || status === 'RETURNED') {
+  where.status = status;
+}
 
     const loans = await prisma.loan.findMany({
       where,

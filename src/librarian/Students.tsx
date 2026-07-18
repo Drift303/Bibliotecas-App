@@ -3,6 +3,7 @@ import api from "../api";
 import DashboardLayout from "../components/DashboardLayout";
 import { useTheme } from "../context/ThemeContext";
 import { Plus, Edit2, Trash2, AlertCircle, CheckCircle, Copy, Check } from "lucide-react";
+import { CredentialGenerator } from "./components/CredentialGenerator";
 
 interface Student {
   id: string | number;
@@ -39,6 +40,8 @@ export default function Students() {
     department: "",
     role: "student",
   });
+
+  const [credentialImage, setCredentialImage] = useState<string | null>(null);
 
   const loadStudents = async () => {
     setLoading(true);
@@ -79,6 +82,7 @@ export default function Students() {
   const handleNewStudent = () => {
     setEditingStudentId(null);
     setActionError("");
+    setCredentialImage(null);
     resetForm();
     setShowForm(true);
   };
@@ -89,6 +93,7 @@ export default function Students() {
 
     setEditingStudentId(id);
     setActionError("");
+    setCredentialImage(null);
     setFormData({
       name: student.name,
       email: student.email,
@@ -129,6 +134,7 @@ export default function Students() {
       department: formData.department || "General",
       barcode: formData.studentId,
       role: "student",
+      credentialImage: credentialImage || undefined,
     };
 
     try {
@@ -302,6 +308,16 @@ export default function Students() {
               }`}
             />
           </div>
+
+          <CredentialGenerator 
+            studentData={{
+              name: formData.name,
+              studentId: formData.studentId,
+              department: formData.department
+            }}
+            onGenerate={setCredentialImage}
+            isDark={isDark}
+          />
 
           <div className="flex gap-3 mt-6">
             <button

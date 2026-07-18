@@ -8,6 +8,9 @@ import { BookTable } from "./components/BookTable";
 import { BookForm } from "./components/BookForm";
 import { BarcodeModal } from "./components/BarcodeModal";
 import { BookSearch } from "./components/BookSearch";
+import { BulkUploadConflictsModal } from "./components/BulkUploadConflictsModal";
+import { ColumnMapperModal } from "./components/ColumnMapperModal";
+import { Info } from "lucide-react";
 
 // Custom Hook para toda la lógica de negocio y estados
 import { useBookInventory } from "./hooks/useBookInventory";
@@ -32,10 +35,10 @@ export default function Inventory() {
     setShowScanner,
     uploading,
     fileInputRef,
-    selectedBookForBarcode,
+    selectedBooksForBarcode,
     showBarcodeModal,
     setShowBarcodeModal,
-    setSelectedBookForBarcode,
+    setSelectedBooksForBarcode,
     filteredBooks,
     handleAddBook,
     handleEdit,
@@ -43,7 +46,22 @@ export default function Inventory() {
     handleSaveBook,
     handleScan,
     handlePrintBarcode,
+    handlePrintSelected,
     handleFileUpload,
+    uploadConflicts,
+    pendingUploads,
+    showUploadModal,
+    setShowUploadModal,
+    confirmUpload,
+    selectedBooksToPrint,
+    setSelectedBooksToPrint,
+    handleToggleSelectBook,
+    handleSelectAllBooks,
+    showColumnMapper,
+    setShowColumnMapper,
+    uploadHeaders,
+    uploadRawData,
+    processMappedData,
   } = useBookInventory();
 
   return (
@@ -58,7 +76,23 @@ export default function Inventory() {
         onFileUpload={handleFileUpload}
         onOpenScanner={() => setShowScanner(true)}
         onAddBook={handleAddBook}
+        selectedPrintCount={selectedBooksToPrint.size}
+        onPrintSelected={handlePrintSelected}
       />
+
+      {/* Helper Banner para enseñar al usuario a usar las nuevas funciones */}
+      <div className={`mb-6 p-4 rounded-xl flex items-start gap-3 border transition-colors ${
+        isDark ? "bg-blue-900/20 border-blue-800/50" : "bg-blue-50 border-blue-200"
+      }`}>
+        <Info className={`mt-0.5 shrink-0 ${isDark ? "text-blue-400" : "text-blue-600"}`} size={20} />
+        <div className={`text-sm ${isDark ? "text-slate-300" : "text-slate-700"}`}>
+          <p className="font-semibold mb-1">💡 Consejos Rápidos para el Bibliotecario:</p>
+          <ul className="list-disc list-inside space-y-1 ml-1 opacity-90">
+            <li><strong>Carga Masiva:</strong> Usa el botón superior para subir un archivo Excel. El sistema detectará libros repetidos automáticamente.</li>
+            <li><strong>Impresión Múltiple:</strong> Selecciona las casillas (a la izquierda de cada libro) en la tabla inferior y haz clic en <strong>Imprimir</strong> arriba para generar planillas de códigos.</li>
+          </ul>
+        </div>
+      </div>
 
       {/* Caja de Búsqueda de Libros */}
       <BookSearch
@@ -102,6 +136,9 @@ export default function Inventory() {
           onEdit={handleEdit}
           onDelete={handleDelete}
           onPrintBarcode={handlePrintBarcode}
+          selectedBooks={selectedBooksToPrint}
+          onToggleSelect={handleToggleSelectBook}
+          onSelectAll={handleSelectAllBooks}
         />
       )}
 
@@ -113,16 +150,38 @@ export default function Inventory() {
         />
       )}
 
+      {/* Modal Mapeo de Columnas Excel */}
+      <ColumnMapperModal
+        isOpen={showColumnMapper}
+        onClose={() => {
+          setShowColumnMapper(false);
+          if (fileInputRef.current) fileInputRef.current.value = "";
+        }}
+        headers={uploadHeaders}
+        sampleRows={uploadRawData.slice(1, 4)}
+        onConfirm={processMappedData}
+      />
+
       {/* Modal Reutilizable para Previsualizar e Imprimir Código de Barras de un libro */}
-      {showBarcodeModal && selectedBookForBarcode && (
+      {showBarcodeModal && selectedBooksForBarcode && selectedBooksForBarcode.length > 0 && (
         <BarcodeModal
           isOpen={showBarcodeModal}
           onClose={() => {
             setShowBarcodeModal(false);
-            setSelectedBookForBarcode(null);
+            setSelectedBooksForBarcode([]);
           }}
-          book={selectedBookForBarcode}
+          books={selectedBooksForBarcode}
           isDark={isDark}
+        />
+      )}
+
+      {showUploadModal && (
+        <BulkUploadConflictsModal
+          conflicts={uploadConflicts}
+          pendingUploads={pendingUploads}
+          isDark={isDark}
+          onConfirm={confirmUpload}
+          onCancel={() => setShowUploadModal(false)}
         />
       )}
     </DashboardLayout>
