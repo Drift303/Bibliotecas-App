@@ -129,7 +129,7 @@ export function useBookInventory() {
             ? "Extraviado"
             : b.statusLogical === "DELETED_LOGICAL"
             ? "Eliminado"
-            : b.available === true || b.status === "AVAILABLE" || b.statusLogical === "ACTIVE"
+            : b.available === true
             ? "Disponible"
             : "Prestado",
       }));
