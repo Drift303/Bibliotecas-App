@@ -62,5 +62,7 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Internal server error' });
 });
 
+console.log("Orígenes permitidos cargados:", allowedOrigins);
+
 const port = process.env.PORT || 3001;
 app.listen(port, () => console.log(`Backend listening on port ${port}`));
