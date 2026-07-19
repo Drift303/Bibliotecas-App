@@ -210,8 +210,7 @@ const createBooksBulk = async (req, res) => {
       isbn: data.isbn ? data.isbn.trim() : null,
       publisher: data.publisher ? data.publisher.trim() : null,
       statusPhysical: data.statusPhysical || 'GOOD',
-      available: data.status === 'AVAILABLE' || data.available === true,
-      status: data.status || 'AVAILABLE',
+      available: data.available === true,
       statusLogical: 'ACTIVE'
     }));
 
