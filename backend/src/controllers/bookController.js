@@ -183,7 +183,6 @@ const deleteBook = async (req, res) => {
   }
 };
 
-<<<<<<< Updated upstream
 const createBooksBulk = async (req, res) => {
   try {
     const parsed = createBooksBulkSchema.safeParse(req.body);
