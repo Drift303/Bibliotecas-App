@@ -206,6 +206,13 @@ export default function AnnualCheck() {
     }
   };
 
+  const handleManualSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (search.trim()) {
+      handleProcessCode(search.trim());
+    }
+  };
+
   useBarcodeScannerGun((barcode) => {
     handleProcessCode(barcode);
   });

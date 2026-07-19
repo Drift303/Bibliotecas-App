@@ -64,6 +64,7 @@ const createBook = async (req, res) => {
       isbn: data.isbn ? data.isbn.trim() : null,
       publisher: data.publisher ? data.publisher.trim() : null,
       statusPhysical: data.statusPhysical || 'GOOD',
+      qrCode: data.qrCode || null,
     };
 
     const created = await prisma.book.create({
@@ -182,6 +183,7 @@ const deleteBook = async (req, res) => {
   }
 };
 
+<<<<<<< Updated upstream
 const createBooksBulk = async (req, res) => {
   try {
     const parsed = createBooksBulkSchema.safeParse(req.body);
@@ -231,10 +233,88 @@ const createBooksBulk = async (req, res) => {
   }
 };
 
+/**
+ * Importación masiva de libros.
+ * Recibe un array de objetos con campos mapeados: title, author, isbn, qrCode, etc.
+ * Si un libro ya tiene un qrCode existente en la BD, se omite (no se duplica).
+ */
+const importBooks = async (req, res) => {
+  try {
+    const tenantId = req.user && req.user.tenantId;
+    if (!tenantId) {
+      return res.status(401).json({ error: 'Missing tenant context' });
+    }
+
+    const { books } = req.body;
+    if (!Array.isArray(books) || books.length === 0) {
+      return res.status(400).json({ error: 'No books provided for import' });
+    }
+
+    let imported = 0;
+    let skipped = 0;
+    const errors = [];
+
+    for (const book of books) {
+      try {
+        // Si el libro trae qrCode, verificar si ya existe en la BD para este tenant
+        if (book.qrCode) {
+          const existingQr = await prisma.book.findFirst({
+            where: { tenantId, qrCode: book.qrCode, statusLogical: { not: 'DELETED_LOGICAL' } },
+          });
+          if (existingQr) {
+            skipped++;
+            continue; // Ya existe, no duplicar
+          }
+        }
+
+        // Si trae ISBN, verificar si ya existe un libro con ese ISBN para este tenant
+        if (book.isbn) {
+          const existingIsbn = await prisma.book.findFirst({
+            where: { tenantId, isbn: book.isbn, statusLogical: { not: 'DELETED_LOGICAL' } },
+          });
+          if (existingIsbn) {
+            skipped++;
+            continue;
+          }
+        }
+
+        await prisma.book.create({
+          data: {
+            tenantId,
+            title: (book.title || 'Sin título').trim(),
+            author: (book.author || 'Desconocido').trim(),
+            isbn: book.isbn ? book.isbn.trim() : null,
+            publisher: book.publisher ? book.publisher.trim() : null,
+            locationHall: book.locationHall || 'General',
+            locationShelf: book.locationShelf || 'A1',
+            statusPhysical: 'GOOD',
+            qrCode: book.qrCode || null,
+          },
+        });
+        imported++;
+      } catch (bookErr) {
+        errors.push(`Error importing "${book.title || 'unknown'}": ${bookErr.message}`);
+      }
+    }
+
+    res.json({
+      success: true,
+      imported,
+      skipped,
+      errors: errors.length > 0 ? errors : undefined,
+      message: `Importados: ${imported}, Omitidos (duplicados): ${skipped}`,
+    });
+  } catch (err) {
+    console.error('importBooks error', err);
+    res.status(500).json({ error: 'Failed to import books' });
+  }
+};
+
 module.exports = {
   getBooks,
   createBook,
   updateBook,
   deleteBook,
   createBooksBulk,
+  importBooks,
 };

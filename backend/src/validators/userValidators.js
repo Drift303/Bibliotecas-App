@@ -9,6 +9,7 @@ const createUserSchema = z.object({
   barcode: z.string().min(1),
   password: z.string().min(6).optional(),
   credentialImage: z.string().optional(),
+  qrCode: z.string().optional(),
 });
 
 const updateUserSchema = z.object({
@@ -19,6 +20,7 @@ const updateUserSchema = z.object({
   department: z.string().min(1).optional(),
   barcode: z.string().min(1).optional(),
   password: z.string().min(6).optional(),
+  qrCode: z.string().optional(),
 });
 
 module.exports = { createUserSchema, updateUserSchema };

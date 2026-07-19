@@ -115,8 +115,21 @@ export default function Login() {
       }
     } catch (err: any) {
       const status = err?.response?.status;
-      if (status === 401) {
-        setError("Correo o contraseña incorrectos");
+      const responseError = err?.response?.data?.error;
+      const responseErrors = err?.response?.data?.errors;
+
+      if (status === 400) {
+        if (responseErrors?.password) {
+          setError("La contraseña debe tener al menos 6 caracteres");
+        } else {
+          setError("Datos ingresados con formato incorrecto");
+        }
+      } else if (status === 401) {
+        if (responseError === "Tenant not recognized for domain") {
+          setError("Escuela (dominio) no registrada");
+        } else {
+          setError("Correo o contraseña incorrectos");
+        }
       } else if (status === 403) {
         setError("La escuela o cuenta no está activa");
       } else {
