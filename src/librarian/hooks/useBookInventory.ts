@@ -373,7 +373,6 @@ export function useBookInventory() {
           title: title || "Desconocido",
           author: author || "Desconocido",
           available: isAvailable,
-          status: isAvailable ? "AVAILABLE" : "LOANED",
           statusPhysical: "GOOD",
           statusLogical: "ACTIVE",
           locationHall: "General",
