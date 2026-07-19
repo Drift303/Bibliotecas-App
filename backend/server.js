@@ -12,7 +12,6 @@ const syncRoutes = require('./src/routes/syncRoutes');
 const bookRoutes = require('./src/routes/bookRoutes');
 const loanRoutes = require('./src/routes/loanRoutes');
 const userRoutes = require('./src/routes/userRoutes');
-const tenantRoutes = require('./src/routes/tenantRoutes');
 
 const app = express();
 
@@ -20,17 +19,28 @@ const app = express();
 app.set('trust proxy', 1);
 
 app.use(helmet());
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ limit: '50mb', extended: true }));
+app.use(express.json({ limit: '1mb' }));
 app.use(cookieParser());
 
-// Opción Correcta y Segura:
+
 const allowedOrigins = process.env.CORS_ORIGIN 
-  ? process.env.CORS_ORIGIN.split(',') 
+  ? process.env.CORS_ORIGIN.split(',').map(o => o.trim()) 
   : ['http://localhost:3000', 'http://localhost:5173'];
 
+
+console.log("Orígenes permitidos cargados:", allowedOrigins);
+
+
 app.use(cors({ 
-  origin: allowedOrigins, 
+  origin: function (origin, callback) {
+ 
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      console.error(`🚨 CORS BLOQUEADO: El origen '${origin}' intentó acceder.`);
+      callback(new Error('Not allowed by CORS'));
+    }
+  }, 
   credentials: true 
 }));
 
@@ -44,7 +54,6 @@ app.use('/api/sync', syncRoutes);
 app.use('/api/books', bookRoutes);
 app.use('/api/loans', loanRoutes);
 app.use('/api/users', userRoutes);
-app.use('/api/tenants', tenantRoutes);
 
 app.get('/api/test-db', async (req, res) => {
   try {
@@ -61,8 +70,6 @@ app.use((err, req, res, next) => {
   console.error('Unhandled error', err);
   res.status(500).json({ error: 'Internal server error' });
 });
-
-console.log("Orígenes permitidos cargados:", allowedOrigins);
 
 const port = process.env.PORT || 3001;
 app.listen(port, () => console.log(`Backend listening on port ${port}`));
