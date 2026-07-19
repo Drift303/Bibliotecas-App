@@ -8,6 +8,7 @@ const createBookSchema = z.object({
   isbn: z.string().optional(),
   publisher: z.string().optional(),
   statusPhysical: z.enum(['GOOD', 'DAMAGED', 'LOST', 'DISCARDED']).optional(),
+  qrCode: z.string().optional(),
 });
 
 const updateBookSchema = createBookSchema.partial();

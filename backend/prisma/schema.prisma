@@ -39,6 +39,7 @@ model User {
   password   String?  // hashed password, optional for students
   role       String   @default("user")
   isDeleted  Boolean  @default(false)
+  qrCode     String?  // Código QR de identificación
   createdAt  DateTime @default(now())
   
   // Relations
@@ -64,6 +65,7 @@ model Book {
   statusPhysical PhysicalStatus @default(GOOD)
   statusLogical LogicalStatus   @default(ACTIVE)
   available     Boolean       @default(true)
+  qrCode        String?       // Código QR de identificación del libro
   createdAt     DateTime      @default(now())
 
   // Relations
