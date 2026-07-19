@@ -5,7 +5,7 @@
   "main": "server.js",
   "scripts": {
     "dev": "nodemon server.js --watch . --ext js,json --delay 200",
-    "start": "npx prisma migrate deploy && node server.js",
+    "start": "npx prisma db push --accept-data-loss && node server.js",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev --name init",
     "seed": "node prisma/seed.js",
