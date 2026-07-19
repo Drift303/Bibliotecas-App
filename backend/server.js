@@ -76,7 +76,7 @@ app.use((err, req, res, next) => {
 const port = process.env.PORT || 3001;
 // Temporary Fix para libros masivos
 prisma.book.updateMany({
-  where: { available: false, loans: { none: { status: 'Activo' } } },
+  where: { available: false, loans: { none: { status: 'ACTIVE' } } },
   data: { available: true }
 }).then(res => console.log('Libros reparados (available=true):', res)).catch(err => console.error(err));
 
