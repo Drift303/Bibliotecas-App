@@ -134,9 +134,11 @@ export default function Schools() {
         });
       }
       setLibrarianTargetId(null);
-    } catch (err: any) {
+   } catch (err: any) {
       const message = err?.response?.data?.error || "";
-      if (message.includes("email")) {
+      if (message.includes("dominio")) {
+        setLibrarianError(message);
+      } else if (message.includes("email") || message.includes("correo")) {
         setLibrarianError("Ese correo ya existe en el plantel.");
       } else {
         setLibrarianError("No se pudo crear el bibliotecario.");
@@ -402,6 +404,14 @@ export default function Schools() {
                 onChange={(e) => setLibrarianEmail(e.target.value)}
                 className={inputClass}
               />
+              {librarianTargetId && (
+                <p className={`text-xs ${textSecondary}`}>
+                  El correo debe terminar en{" "}
+                  <span className={textPrimary}>
+                    @{schools.find((s) => s.id === librarianTargetId)?.emailDomain}
+                  </span>
+                </p>
+              )}
             </div>
 
             <div className="flex gap-2 mt-5">
