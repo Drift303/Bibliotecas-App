@@ -60,6 +60,14 @@ const createLibrarianForTenant = async (req, res) => {
     if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
 
     const data = parsed.data;
+
+    // El correo del bibliotecario debe pertenecer al dominio del plantel,
+    // porque el login busca el tenant a partir del dominio del email.
+    const emailDomain = data.email.toLowerCase().split('@')[1];
+    if (emailDomain !== tenant.emailDomain.toLowerCase()) {
+      return res.status(400).json({ error: `El correo debe pertenecer al dominio ${tenant.emailDomain}` });
+    }
+
     const existingEmail = await prisma.user.findFirst({ where: { tenantId, email: data.email.toLowerCase() } });
     if (existingEmail) return res.status(400).json({ error: 'Ese email ya existe en el plantel' });
 
