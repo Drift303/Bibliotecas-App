@@ -57,16 +57,6 @@ app.use('/api/loans', loanRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/tenants', tenantRoutes);
 
-app.get('/api/test-db', async (req, res) => {
-  try {
-    const tenants = await prisma.tenant.findMany({ orderBy: { createdAt: 'asc' } });
-    res.json({ success: true, tenants });
-  } catch (err) {
-    console.error('DB error:', err);
-    res.status(500).json({ success: false, error: String(err) });
-  }
-});
-
 // global error handler
 app.use((err, req, res, next) => {
   console.error('Unhandled error', err);
