@@ -33,13 +33,14 @@ const createTenant = async (req, res) => {
     const parsed = createTenantSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ errors: parsed.error.format() });
 
-    const { name, emailDomain } = parsed.data;
+    const { name, emailDomain, type } = parsed.data;
 
     const existing = await prisma.tenant.findUnique({ where: { emailDomain: emailDomain.toLowerCase() } });
     if (existing) return res.status(400).json({ error: 'Ese dominio ya está registrado' });
 
     const created = await prisma.tenant.create({
-      data: { name: name.trim(), emailDomain: emailDomain.toLowerCase() },
+      // Si `type` no viene en el body, Prisma aplica el default SCHOOL del schema.
+      data: { name: name.trim(), emailDomain: emailDomain.toLowerCase(), ...(type ? { type } : {}) },
     });
 
     console.log(`[AUDIT] superadmin ${req.user.id} creó tenant ${created.id} (${created.name})`);

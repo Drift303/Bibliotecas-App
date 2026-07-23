@@ -12,11 +12,17 @@ enum TenantStatus {
   SUSPENDED
 }
 
+enum TenantType {
+  SCHOOL
+  PUBLIC_LIBRARY
+}
+
 model Tenant {
   id          String       @id @default(uuid())
   name        String
   emailDomain String       @unique
   status      TenantStatus @default(ACTIVE)
+  type        TenantType   @default(SCHOOL)
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
   
