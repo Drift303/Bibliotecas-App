@@ -177,7 +177,7 @@ export default function Loans() {
                   </span>
                 </td>
                 <td className="p-3 text-center">
-                  {loan.status === "Activo" ? (
+                  {loan.status === "Activo" || loan.status === "Vencido" ? (
                     <button
                       onClick={() => initiateReturnFlow(loan)}
                       className="bg-green-600 text-white px-4 py-1.5 rounded-lg text-sm font-semibold transition-all duration-300 hover:bg-green-700"
@@ -255,6 +255,7 @@ export default function Loans() {
                 <option value="Excelente">Excelente (Como nuevo)</option>
                 <option value="Bueno">Bueno (Signos de uso normales)</option>
                 <option value="Dañado">Dañado (Requiere penalización/reparación)</option>
+                <option value="Perdido">Libro perdido (Paga costo de reposición)</option>
               </select>
             </div>
 

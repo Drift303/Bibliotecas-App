@@ -34,6 +34,10 @@ export function useBookInventory() {
   const [editingBookId, setEditingBookId] = useState<string | number | null>(null);
   const [loading, setLoading] = useState(true);
 
+  const [filterStatus, setFilterStatus] = useState<string>("Todos");
+  const [sortField, setSortField] = useState<string>("title");
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
+
   const [statusMessage, setStatusMessage] = useState("");
   const [statusType, setStatusType] = useState<"ok" | "error" | "info">("info");
 
@@ -261,15 +265,31 @@ export function useBookInventory() {
   const searchLower = search.toLowerCase().trim();
   const exactIsbnMatch = books.filter(b => b.isbn && b.isbn.toLowerCase() === searchLower);
 
-  const filteredBooks = exactIsbnMatch.length > 0
+  let filteredBooks = exactIsbnMatch.length > 0 && searchLower !== ""
     ? exactIsbnMatch
     : books.filter(
-        (book) =>
-          book.title.toLowerCase().includes(searchLower) ||
+        (book) => {
+          const matchesSearch = book.title.toLowerCase().includes(searchLower) ||
           book.author.toLowerCase().includes(searchLower) ||
           book.isbn.toLowerCase().includes(searchLower) ||
-          book.id.toString().toLowerCase().includes(searchLower)
+          book.id.toString().toLowerCase().includes(searchLower);
+
+          const matchesStatus = filterStatus === "Todos" || book.status === filterStatus;
+
+          return matchesSearch && matchesStatus;
+        }
       );
+
+  filteredBooks.sort((a, b) => {
+    let valA = a[sortField as keyof Book];
+    let valB = b[sortField as keyof Book];
+    if (typeof valA === "string") valA = valA.toLowerCase();
+    if (typeof valB === "string") valB = valB.toLowerCase();
+    
+    if (valA < valB) return sortOrder === "asc" ? -1 : 1;
+    if (valA > valB) return sortOrder === "asc" ? 1 : -1;
+    return 0;
+  });
 
   const handleScan = (decodedText: string) => {
     const exactMatch = books.find(b => b.isbn && b.isbn.toLowerCase() === decodedText.toLowerCase());
@@ -428,6 +448,12 @@ export function useBookInventory() {
     books,
     search,
     setSearch,
+    filterStatus,
+    setFilterStatus,
+    sortField,
+    setSortField,
+    sortOrder,
+    setSortOrder,
     showForm,
     setShowForm,
     editingBookId,

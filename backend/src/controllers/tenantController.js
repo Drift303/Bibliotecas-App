@@ -143,4 +143,41 @@ const updateTenantStatus = async (req, res) => {
   }
 };
 
-module.exports = { getTenants, createTenant, createLibrarianForTenant, updateTenantStatus };
+const getSettings = async (req, res) => {
+  try {
+    const tenantId = req.user && req.user.tenantId;
+    if (!tenantId) return res.status(401).json({ error: 'Missing tenant context' });
+
+    const tenant = await prisma.tenant.findUnique({ where: { id: tenantId } });
+    if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
+
+    res.json({ success: true, data: { finePerDay: tenant.finePerDay } });
+  } catch (err) {
+    console.error('getSettings error', err);
+    res.status(500).json({ error: 'Failed to fetch settings' });
+  }
+};
+
+const updateSettings = async (req, res) => {
+  try {
+    const tenantId = req.user && req.user.tenantId;
+    if (!tenantId) return res.status(401).json({ error: 'Missing tenant context' });
+
+    const { finePerDay } = req.body;
+    if (finePerDay === undefined || typeof finePerDay !== 'number' || finePerDay < 0) {
+      return res.status(400).json({ error: 'Invalid finePerDay' });
+    }
+
+    const updated = await prisma.tenant.update({
+      where: { id: tenantId },
+      data: { finePerDay }
+    });
+
+    res.json({ success: true, data: { finePerDay: updated.finePerDay } });
+  } catch (err) {
+    console.error('updateSettings error', err);
+    res.status(500).json({ error: 'Failed to update settings' });
+  }
+};
+
+module.exports = { getTenants, createTenant, createLibrarianForTenant, updateTenantStatus, getSettings, updateSettings };

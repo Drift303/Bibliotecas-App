@@ -22,6 +22,12 @@ export default function Inventory() {
     books,
     search,
     setSearch,
+    filterStatus,
+    setFilterStatus,
+    sortField,
+    setSortField,
+    sortOrder,
+    setSortOrder,
     showForm,
     setShowForm,
     editingBookId,
@@ -99,6 +105,12 @@ export default function Inventory() {
         search={search}
         onSearchChange={setSearch}
         isDark={isDark}
+        filterStatus={filterStatus}
+        setFilterStatus={setFilterStatus}
+        sortField={sortField}
+        setSortField={setSortField}
+        sortOrder={sortOrder}
+        setSortOrder={setSortOrder}
       />
 
       {/* Formulario para agregar / editar libro con escaneo de ISBN y generación de código de barras */}

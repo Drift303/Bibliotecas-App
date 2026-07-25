@@ -20,9 +20,15 @@ interface TempPasswordModal {
   tempPassword: string;
 }
 
+interface Department {
+  id: string;
+  name: string;
+}
+
 export default function Students() {
   const { isDark } = useTheme();
   const [students, setStudents] = useState<Student[]>([]);
+  const [departmentsList, setDepartmentsList] = useState<Department[]>([]);
   const [search, setSearch] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [editingStudentId, setEditingStudentId] = useState<string | number | null>(null);
@@ -32,12 +38,15 @@ export default function Students() {
   const [statusType, setStatusType] = useState<"ok" | "error" | "info">("info");
   const [tempPasswordModal, setTempPasswordModal] = useState<TempPasswordModal | null>(null);
   const [copiedPassword, setCopiedPassword] = useState(false);
+  const tenantType = localStorage.getItem("tenantType") || "SCHOOL";
 
   const [formData, setFormData] = useState({
     name: "",
     email: "",
     studentId: "",
     department: "",
+    contactEmail: "",
+    contactPhone: "",
     role: "student",
   });
 
@@ -46,10 +55,15 @@ export default function Students() {
   const loadStudents = async () => {
     setLoading(true);
     try {
-      const res = await api.get("/users?role=student");
-      const studentsList = Array.isArray(res.data.data) ? res.data.data : [];
+      const [resStudents, resDepts] = await Promise.all([
+        api.get("/users?role=student"),
+        tenantType === "SCHOOL" ? api.get("/departments") : Promise.resolve({ data: { data: [] } })
+      ]);
+      const studentsList = Array.isArray(resStudents.data.data) ? resStudents.data.data : [];
+      const deptsList = Array.isArray(resDepts.data.data) ? resDepts.data.data : [];
 
       setStudents(studentsList);
+      setDepartmentsList(deptsList);
       setStatusType("ok");
       setStatusMessage(
         studentsList.length > 0
@@ -75,6 +89,8 @@ export default function Students() {
       email: "",
       studentId: "",
       department: "",
+      contactEmail: "",
+      contactPhone: "",
       role: "student",
     });
   };
@@ -97,8 +113,10 @@ export default function Students() {
     setFormData({
       name: student.name,
       email: student.email,
-      studentId: student.studentId,
-      department: student.department,
+      studentId: student.studentId || "",
+      department: student.department || "",
+      contactEmail: (student as any).contactEmail || "",
+      contactPhone: (student as any).contactPhone || "",
       role: student.role,
     });
     setShowForm(true);
@@ -120,9 +138,20 @@ export default function Students() {
   };
 
   const handleSaveStudent = async () => {
-    if (!formData.name || !formData.email || !formData.studentId) {
-      setActionError("Completa nombre, correo y matricula");
-      return;
+    if (tenantType === "SCHOOL") {
+      if (!formData.name || !formData.email || !formData.studentId) {
+        setActionError("Completa nombre, correo y matricula");
+        return;
+      }
+    } else {
+      if (!formData.name || !formData.email) {
+        setActionError("Completa nombre y correo de acceso");
+        return;
+      }
+      if (!formData.contactEmail && !formData.contactPhone) {
+        setActionError("Completa al menos un medio de contacto (correo o teléfono)");
+        return;
+      }
     }
 
     setActionError("");
@@ -130,9 +159,11 @@ export default function Students() {
     const payload = {
       name: formData.name,
       email: formData.email,
-      studentId: formData.studentId,
-      department: formData.department || "General",
-      barcode: formData.studentId,
+      studentId: tenantType === "SCHOOL" ? formData.studentId : undefined,
+      department: tenantType === "SCHOOL" ? (formData.department || "General") : undefined,
+      barcode: tenantType === "SCHOOL" ? formData.studentId : undefined,
+      contactEmail: tenantType === "PUBLIC_LIBRARY" && formData.contactEmail ? formData.contactEmail : undefined,
+      contactPhone: tenantType === "PUBLIC_LIBRARY" && formData.contactPhone ? formData.contactPhone : undefined,
       role: "student",
       credentialImage: credentialImage || undefined,
     };
@@ -163,13 +194,22 @@ export default function Students() {
       const message = err?.response?.data?.error || err?.response?.data?.message || "";
 
       if (message.includes("email")) {
-        setActionError("Ya existe un alumno con ese correo");
+        setActionError("Ya existe un alumno con ese correo, intenta con otra variación.");
       } else if (message.includes("studentId")) {
         setActionError("Ya existe un alumno con esa matricula");
       } else {
         setActionError("No se pudo registrar al alumno");
       }
     }
+  };
+
+  const handleGenerateEmail = () => {
+    if (!formData.name) {
+      setActionError("Escribe el nombre primero para generar el correo");
+      return;
+    }
+    const baseEmail = formData.name.toLowerCase().trim().replace(/[^a-z0-9]/g, "") + "@biblioteca.local";
+    setFormData({ ...formData, email: baseEmail });
   };
 
   const searchStudentLower = search.toLowerCase().trim();
@@ -262,18 +302,6 @@ export default function Students() {
           <div className="grid md:grid-cols-2 gap-4">
             <input
               type="text"
-              placeholder="Matricula"
-              value={formData.studentId}
-              onChange={(e) => setFormData({ ...formData, studentId: e.target.value })}
-              className={`px-4 py-2 rounded-lg border transition-colors ${
-                isDark
-                  ? "bg-slate-800 border-slate-600 text-white placeholder-slate-400 focus:border-blue-500 focus:outline-none"
-                  : "bg-white border-slate-200 text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none"
-              }`}
-            />
-
-            <input
-              type="text"
               placeholder="Nombre completo"
               value={formData.name}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
@@ -284,29 +312,86 @@ export default function Students() {
               }`}
             />
 
-            <input
-              type="email"
-              placeholder="Correo"
-              value={formData.email}
-              onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-              className={`px-4 py-2 rounded-lg border transition-colors ${
-                isDark
-                  ? "bg-slate-800 border-slate-600 text-white placeholder-slate-400 focus:border-blue-500 focus:outline-none"
-                  : "bg-white border-slate-200 text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none"
-              }`}
-            />
+            {tenantType === "SCHOOL" && (
+              <input
+                type="text"
+                placeholder="Matricula"
+                value={formData.studentId}
+                onChange={(e) => setFormData({ ...formData, studentId: e.target.value })}
+                className={`px-4 py-2 rounded-lg border transition-colors ${
+                  isDark
+                    ? "bg-slate-800 border-slate-600 text-white placeholder-slate-400 focus:border-blue-500 focus:outline-none"
+                    : "bg-white border-slate-200 text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none"
+                }`}
+              />
+            )}
 
-            <input
-              type="text"
-              placeholder="Departamento"
-              value={formData.department}
-              onChange={(e) => setFormData({ ...formData, department: e.target.value })}
-              className={`px-4 py-2 rounded-lg border transition-colors ${
-                isDark
-                  ? "bg-slate-800 border-slate-600 text-white placeholder-slate-400 focus:border-blue-500 focus:outline-none"
-                  : "bg-white border-slate-200 text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none"
-              }`}
-            />
+            <div className="flex gap-2">
+              <input
+                type="email"
+                placeholder="Correo de acceso"
+                value={formData.email}
+                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                className={`flex-1 px-4 py-2 rounded-lg border transition-colors ${
+                  isDark
+                    ? "bg-slate-800 border-slate-600 text-white placeholder-slate-400 focus:border-blue-500 focus:outline-none"
+                    : "bg-white border-slate-200 text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none"
+                }`}
+              />
+              {tenantType === "PUBLIC_LIBRARY" && (
+                <button
+                  type="button"
+                  onClick={handleGenerateEmail}
+                  className="px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium text-sm transition-all"
+                >
+                  Generar
+                </button>
+              )}
+            </div>
+
+            {tenantType === "SCHOOL" && (
+              <select
+                value={formData.department}
+                onChange={(e) => setFormData({ ...formData, department: e.target.value })}
+                className={`px-4 py-2 rounded-lg border transition-colors ${
+                  isDark
+                    ? "bg-slate-800 border-slate-600 text-white focus:border-blue-500 focus:outline-none"
+                    : "bg-white border-slate-200 text-slate-900 focus:border-blue-500 focus:outline-none"
+                }`}
+              >
+                <option value="">Selecciona Departamento / Carrera</option>
+                {departmentsList.map(dep => (
+                  <option key={dep.id} value={dep.name}>{dep.name}</option>
+                ))}
+              </select>
+            )}
+
+            {tenantType === "PUBLIC_LIBRARY" && (
+              <>
+                <input
+                  type="email"
+                  placeholder="Correo de contacto real"
+                  value={formData.contactEmail}
+                  onChange={(e) => setFormData({ ...formData, contactEmail: e.target.value })}
+                  className={`px-4 py-2 rounded-lg border transition-colors ${
+                    isDark
+                      ? "bg-slate-800 border-slate-600 text-white placeholder-slate-400 focus:border-blue-500 focus:outline-none"
+                      : "bg-white border-slate-200 text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none"
+                  }`}
+                />
+                <input
+                  type="tel"
+                  placeholder="Teléfono de contacto"
+                  value={formData.contactPhone}
+                  onChange={(e) => setFormData({ ...formData, contactPhone: e.target.value })}
+                  className={`px-4 py-2 rounded-lg border transition-colors ${
+                    isDark
+                      ? "bg-slate-800 border-slate-600 text-white placeholder-slate-400 focus:border-blue-500 focus:outline-none"
+                      : "bg-white border-slate-200 text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none"
+                  }`}
+                />
+              </>
+            )}
           </div>
 
           <CredentialGenerator 
@@ -371,10 +456,11 @@ export default function Students() {
               } border-b`}
             >
               <tr>
-                <th className="p-3 text-left font-semibold">Matricula</th>
+                {tenantType === "SCHOOL" && <th className="p-3 text-left font-semibold">Matricula</th>}
                 <th className="p-3 text-left font-semibold">Nombre</th>
-                <th className="p-3 text-left font-semibold">Correo</th>
-                <th className="p-3 text-left font-semibold">Depto.</th>
+                <th className="p-3 text-left font-semibold">Correo Acceso</th>
+                {tenantType === "SCHOOL" && <th className="p-3 text-left font-semibold">Depto.</th>}
+                {tenantType === "PUBLIC_LIBRARY" && <th className="p-3 text-left font-semibold">Contacto</th>}
                 <th className="p-3 text-center font-semibold">Acciones</th>
               </tr>
             </thead>
@@ -392,18 +478,27 @@ export default function Students() {
                       : "bg-slate-50 hover:bg-slate-100"
                   }`}
                 >
-                  <td className={`p-3 font-mono text-sm ${isDark ? "text-slate-300" : "text-slate-700"}`}>
-                    {student.studentId}
-                  </td>
+                  {tenantType === "SCHOOL" && (
+                    <td className={`p-3 font-mono text-sm ${isDark ? "text-slate-300" : "text-slate-700"}`}>
+                      {student.studentId}
+                    </td>
+                  )}
                   <td className={`p-3 font-medium ${isDark ? "text-white" : "text-slate-900"}`}>
                     {student.name}
                   </td>
                   <td className={`p-3 ${isDark ? "text-slate-400" : "text-slate-600"}`}>
                     {student.email}
                   </td>
-                  <td className={`p-3 text-sm ${isDark ? "text-slate-400" : "text-slate-600"}`}>
-                    {student.department}
-                  </td>
+                  {tenantType === "SCHOOL" && (
+                    <td className={`p-3 text-sm ${isDark ? "text-slate-400" : "text-slate-600"}`}>
+                      {student.department}
+                    </td>
+                  )}
+                  {tenantType === "PUBLIC_LIBRARY" && (
+                    <td className={`p-3 text-sm ${isDark ? "text-slate-400" : "text-slate-600"}`}>
+                      {(student as any).contactEmail || (student as any).contactPhone}
+                    </td>
+                  )}
                   <td className="p-3 text-center">
                     <div className="flex items-center justify-center gap-2">
                       <button

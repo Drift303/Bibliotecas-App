@@ -8,7 +8,8 @@ import {
   UserCheck, 
   Users, 
   History,
-  ClipboardCheck
+  ClipboardCheck,
+  Building2
 } from "lucide-react";
 
 // CORREGIDO: Ahora el SVG tiene el path para dibujar el libro físico
@@ -33,6 +34,7 @@ export default function Sidebar() {
   const location = useLocation();
   const { isDark } = useTheme();
   const userName = localStorage.getItem("userName") || "Bibliotecario";
+  const tenantType = localStorage.getItem("tenantType") || "SCHOOL";
 
   // Agregamos la propiedad 'icon' asignando el componente correspondiente
   const links = [
@@ -41,8 +43,13 @@ export default function Sidebar() {
     { to: "/annual-inventory", label: "Auditoría Anual", icon: ClipboardCheck },
     { to: "/quick-loan", label: "Préstamo Rápido", icon: UserCheck },
     { to: "/students", label: "Alumnos", icon: Users },
-    { to: "/loans", label: "Historial", icon: History },
   ];
+
+  if (tenantType === "SCHOOL") {
+    links.push({ to: "/departments", label: "Departamentos", icon: Building2 });
+  }
+
+  links.push({ to: "/loans", label: "Historial", icon: History });
 
   return (
     <aside className={`w-64 h-screen sticky top-0 flex flex-col transition-all duration-300 border-r backdrop-blur-2xl overflow-y-auto ${

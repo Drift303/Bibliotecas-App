@@ -4,12 +4,14 @@ const createUserSchema = z.object({
   name: z.string().min(1),
   email: z.string().email(),
   role: z.enum(['student', 'librarian', 'admin_plantel', 'superadmin']),
-  studentId: z.string().min(1),
-  department: z.string().min(1),
-  barcode: z.string().min(1),
+  studentId: z.string().min(1).optional(),
+  department: z.string().min(1).optional(),
+  barcode: z.string().min(1).optional(),
   password: z.string().min(6).optional(),
   credentialImage: z.string().optional(),
   qrCode: z.string().optional(),
+  contactEmail: z.string().email().optional(),
+  contactPhone: z.string().optional(),
 });
 
 const updateUserSchema = z.object({
@@ -21,6 +23,8 @@ const updateUserSchema = z.object({
   barcode: z.string().min(1).optional(),
   password: z.string().min(6).optional(),
   qrCode: z.string().optional(),
+  contactEmail: z.string().email().optional(),
+  contactPhone: z.string().optional(),
 });
 
 module.exports = { createUserSchema, updateUserSchema };

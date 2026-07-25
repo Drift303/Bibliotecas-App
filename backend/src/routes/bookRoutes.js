@@ -12,13 +12,16 @@ const {
 
 const authGuard = require('../middlewares/authGuard');
 const saasGuard = require('../middlewares/saasGuard');
+const roleGuard = require('../middlewares/roleGuard');
+
+const bookRoles = ['librarian', 'admin_plantel', 'superadmin'];
 
 router.get('/', authGuard, saasGuard, getBooks);
-router.post('/', authGuard, saasGuard, createBook);
-router.post('/bulk', authGuard, saasGuard, createBooksBulk);
-router.post('/import', authGuard, saasGuard, importBooks);
+router.post('/', authGuard, saasGuard, roleGuard(bookRoles), createBook);
+router.post('/bulk', authGuard, saasGuard, roleGuard(bookRoles), createBooksBulk);
+router.post('/import', authGuard, saasGuard, roleGuard(bookRoles), importBooks);
 
-router.put('/:id', authGuard, saasGuard, updateBook);
-router.delete('/:id', authGuard, saasGuard, deleteBook);
+router.put('/:id', authGuard, saasGuard, roleGuard(bookRoles), updateBook);
+router.delete('/:id', authGuard, saasGuard, roleGuard(bookRoles), deleteBook);
 
 module.exports = router;

@@ -1,5 +1,6 @@
 const prisma = require('../config/prismaClient');
 const { createLoanSchema, returnLoanSchema } = require('../validators/loanValidators');
+const { sendLoanDueReminderEmail } = require('../services/emailService');
 
 const FINE_PER_DAY = 5.0; // MXN
 
@@ -24,6 +25,9 @@ if (req.user.role === 'student') {
 }
 if (status === 'ACTIVE' || status === 'RETURNED') {
   where.status = status;
+} else if (status === 'OVERDUE') {
+  where.status = 'ACTIVE';
+  where.dueDate = { lt: new Date() };
 }
 
     const loans = await prisma.loan.findMany({
@@ -95,7 +99,10 @@ const returnLoan = async (req, res) => {
     if (loan.status === 'RETURNED') return res.status(400).json({ error: 'Loan already returned' });
     const now = new Date();
     let fineAmount = 0;
-    if (loan.dueDate && now > loan.dueDate) {
+    
+    if (condition === 'Perdido') {
+      fineAmount = loan.book.replacementCost || 500.0;
+    } else if (loan.dueDate && now > loan.dueDate) {
       const msPerDay = 1000 * 60 * 60 * 24;
       const diff = Math.ceil((now - loan.dueDate) / msPerDay);
       fineAmount = diff * FINE_PER_DAY;
@@ -104,7 +111,11 @@ const returnLoan = async (req, res) => {
     // Si el bibliotecario capturó el estado físico del libro al devolverlo,
     // se actualiza statusPhysical. Si no se envía, el libro conserva su estado anterior.
     const bookUpdateData = { available: true, statusLogical: 'ACTIVE' };
-    if (condition && CONDITION_TO_STATUS_PHYSICAL[condition]) {
+    
+    if (condition === 'Perdido') {
+      bookUpdateData.available = false;
+      bookUpdateData.statusPhysical = 'LOST';
+    } else if (condition && CONDITION_TO_STATUS_PHYSICAL[condition]) {
       bookUpdateData.statusPhysical = CONDITION_TO_STATUS_PHYSICAL[condition];
     }
 
@@ -119,4 +130,37 @@ const returnLoan = async (req, res) => {
   }
 };
 
-module.exports = { getLoans, createLoan, returnLoan };
+const sendReminder = async (req, res) => {
+  try {
+    const loanId = req.params.id;
+    const tenantId = req.user && req.user.tenantId;
+    if (!tenantId) return res.status(401).json({ error: 'Missing tenant context' });
+
+    const loan = await prisma.loan.findUnique({ where: { id: loanId }, include: { user: true, book: true } });
+    if (!loan || loan.tenantId !== tenantId) return res.status(404).json({ error: 'Loan not found' });
+    
+    if (loan.status !== 'ACTIVE') return res.status(400).json({ error: 'Loan is not active' });
+
+    // Enviar correo de recordatorio (simulado o real si está integrado en emailService)
+    console.log(`[REMINDER] Recordatorio enviado a ${loan.user.email} por el libro ${loan.book.title}`);
+    
+    await sendLoanDueReminderEmail({
+      name: loan.user.name,
+      email: loan.user.email,
+      bookTitle: loan.book.title,
+      dueDate: loan.dueDate
+    });
+
+    const updated = await prisma.loan.update({
+      where: { id: loanId },
+      data: { lastReminderSentAt: new Date() }
+    });
+
+    res.json({ success: true, data: updated });
+  } catch (err) {
+    console.error('sendReminder error', err);
+    res.status(500).json({ error: 'Failed to send reminder' });
+  }
+};
+
+module.exports = { getLoans, createLoan, returnLoan, sendReminder };

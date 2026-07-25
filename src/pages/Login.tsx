@@ -105,6 +105,7 @@ export default function Login() {
       localStorage.setItem("userId", user.id);
       localStorage.setItem("userName", user.name);
       localStorage.setItem("tenantId", tenant.id);
+      localStorage.setItem("tenantType", tenant.type);
 
       if (user.role === "student") {
         navigate("/catalog");

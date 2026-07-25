@@ -12,6 +12,7 @@ import Catalog from "../student/Catalog";
 import Billing from "../superadmin/Billing";
 import Schools from "../superadmin/Schools";
 import AnnualCheck from "../librarian/AnnualCheck";
+import Departments from "../librarian/Departments";
 
 export default function AppRoutes() {
   return (
@@ -25,6 +26,7 @@ export default function AppRoutes() {
         <Route path="/inventory" element={<ProtectedRoute><Inventory /></ProtectedRoute>} />
         <Route path="/quick-loan" element={<ProtectedRoute><QuickLoan /></ProtectedRoute>} />
         <Route path="/students" element={<ProtectedRoute><Students /></ProtectedRoute>} />
+        <Route path="/departments" element={<ProtectedRoute><Departments /></ProtectedRoute>} />
         <Route path="/catalog" element={<ProtectedRoute><Catalog /></ProtectedRoute>} />
         <Route path="/schools" element={<ProtectedRoute><Schools /></ProtectedRoute>} />
         <Route path="/billing" element={<ProtectedRoute><Billing /></ProtectedRoute>} />

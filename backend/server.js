@@ -13,6 +13,7 @@ const bookRoutes = require('./src/routes/bookRoutes');
 const loanRoutes = require('./src/routes/loanRoutes');
 const userRoutes = require('./src/routes/userRoutes');
 const tenantRoutes = require('./src/routes/tenantRoutes');
+const departmentRoutes = require('./src/routes/departmentRoutes');
 
 const app = express();
 
@@ -56,6 +57,7 @@ app.use('/api/books', bookRoutes);
 app.use('/api/loans', loanRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/tenants', tenantRoutes);
+app.use('/api/departments', departmentRoutes);
 
 // global error handler
 app.use((err, req, res, next) => {

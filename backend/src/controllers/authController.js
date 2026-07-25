@@ -56,7 +56,7 @@ const login = async (req, res) => {
       maxAge: 7 * 24 * 3600 * 1000,
     });
 
-    res.json({ success: true, user: { id: user.id, name: user.name, email: user.email, role: user.role }, tenant: { id: tenant.id, name: tenant.name } });
+    res.json({ success: true, user: { id: user.id, name: user.name, email: user.email, role: user.role }, tenant: { id: tenant.id, name: tenant.name, type: tenant.type } });
   } catch (err) {
     console.error('login error', err);
     res.status(500).json({ error: 'Internal server error' });

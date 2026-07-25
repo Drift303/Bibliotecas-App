@@ -47,22 +47,44 @@ const createUser = async (req, res) => {
     const tenantId = req.user && req.user.tenantId;
     if (!tenantId) return res.status(401).json({ error: 'Missing tenant context' });
 
+    const tenant = await prisma.tenant.findUnique({ where: { id: tenantId } });
+    if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
+
     const data = parsed.data;
 
+    if (tenant.type === 'SCHOOL') {
+      if (!data.studentId || !data.department || !data.barcode) {
+        return res.status(400).json({ error: 'studentId, department, and barcode are required for SCHOOL' });
+      }
+      if (data.email && !data.email.endsWith(`@${tenant.emailDomain}`)) {
+        return res.status(400).json({ error: 'Email must match school domain' });
+      }
+    } else if (tenant.type === 'PUBLIC_LIBRARY') {
+      if (!data.contactEmail && !data.contactPhone) {
+        return res.status(400).json({ error: 'contactEmail or contactPhone is required for PUBLIC_LIBRARY' });
+      }
+    }
+
     // Check uniqueness within tenant
-    const existingStudentId = await prisma.user.findFirst({ where: { tenantId, studentId: data.studentId } });
-    if (existingStudentId) return res.status(400).json({ error: 'studentId already exists in tenant' });
-    const existingBarcode = await prisma.user.findFirst({ where: { tenantId, barcode: data.barcode } });
-    if (existingBarcode) return res.status(400).json({ error: 'barcode already exists in tenant' });
+    if (data.studentId) {
+      const existingStudentId = await prisma.user.findFirst({ where: { tenantId, studentId: data.studentId } });
+      if (existingStudentId) return res.status(400).json({ error: 'studentId already exists in tenant' });
+    }
+    if (data.barcode) {
+      const existingBarcode = await prisma.user.findFirst({ where: { tenantId, barcode: data.barcode } });
+      if (existingBarcode) return res.status(400).json({ error: 'barcode already exists in tenant' });
+    }
 
     const payload = {
       tenantId,
       name: data.name.trim(),
       email: data.email.toLowerCase(),
       role: data.role,
-      studentId: data.studentId.trim(),
-      department: data.department.trim(),
-      barcode: data.barcode.trim(),
+      studentId: data.studentId ? data.studentId.trim() : null,
+      department: data.department ? data.department.trim() : null,
+      barcode: data.barcode ? data.barcode.trim() : null,
+      contactEmail: data.contactEmail ? data.contactEmail.toLowerCase() : null,
+      contactPhone: data.contactPhone ? data.contactPhone.trim() : null,
     };
 
     // Si el bibliotecario no especificó contraseña, se genera una temporal automáticamente.
@@ -117,25 +139,51 @@ const updateUser = async (req, res) => {
     const tenantId = req.user && req.user.tenantId;
     if (!tenantId) return res.status(401).json({ error: 'Missing tenant context' });
 
+    const tenant = await prisma.tenant.findUnique({ where: { id: tenantId } });
+    if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
+
     const existing = await prisma.user.findUnique({ where: { id: userId } });
     if (!existing || existing.tenantId !== tenantId) return res.status(404).json({ error: 'User not found' });
 
     const data = parsed.data;
+
+    if (tenant.type === 'SCHOOL') {
+      if (data.email && !data.email.endsWith(`@${tenant.emailDomain}`)) {
+        return res.status(400).json({ error: 'Email must match school domain' });
+      }
+    } else if (tenant.type === 'PUBLIC_LIBRARY') {
+      const finalEmail = data.contactEmail !== undefined ? data.contactEmail : existing.contactEmail;
+      const finalPhone = data.contactPhone !== undefined ? data.contactPhone : existing.contactPhone;
+      if (!finalEmail && !finalPhone) {
+        return res.status(400).json({ error: 'contactEmail or contactPhone is required for PUBLIC_LIBRARY' });
+      }
+    }
+
     const updateData = {};
     if (data.name) updateData.name = data.name.trim();
     if (data.email) updateData.email = data.email.toLowerCase();
     if (data.role) updateData.role = data.role;
-    if (data.studentId) {
-      const other = await prisma.user.findFirst({ where: { tenantId, studentId: data.studentId, NOT: { id: userId } } });
-      if (other) return res.status(400).json({ error: 'studentId already exists in tenant' });
-      updateData.studentId = data.studentId.trim();
+    if (data.studentId !== undefined) {
+      if (data.studentId) {
+        const other = await prisma.user.findFirst({ where: { tenantId, studentId: data.studentId, NOT: { id: userId } } });
+        if (other) return res.status(400).json({ error: 'studentId already exists in tenant' });
+        updateData.studentId = data.studentId.trim();
+      } else {
+        updateData.studentId = null;
+      }
     }
-    if (data.department) updateData.department = data.department.trim();
-    if (data.barcode) {
-      const other = await prisma.user.findFirst({ where: { tenantId, barcode: data.barcode, NOT: { id: userId } } });
-      if (other) return res.status(400).json({ error: 'barcode already exists in tenant' });
-      updateData.barcode = data.barcode.trim();
+    if (data.department !== undefined) updateData.department = data.department ? data.department.trim() : null;
+    if (data.barcode !== undefined) {
+      if (data.barcode) {
+        const other = await prisma.user.findFirst({ where: { tenantId, barcode: data.barcode, NOT: { id: userId } } });
+        if (other) return res.status(400).json({ error: 'barcode already exists in tenant' });
+        updateData.barcode = data.barcode.trim();
+      } else {
+        updateData.barcode = null;
+      }
     }
+    if (data.contactEmail !== undefined) updateData.contactEmail = data.contactEmail ? data.contactEmail.toLowerCase() : null;
+    if (data.contactPhone !== undefined) updateData.contactPhone = data.contactPhone ? data.contactPhone.trim() : null;
     if (data.password) updateData.password = await hashPassword(data.password);
 
     const updated = await prisma.user.update({ where: { id: userId }, data: updateData });
