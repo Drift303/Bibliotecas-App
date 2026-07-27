@@ -63,9 +63,16 @@ const createUser = async (req, res) => {
       if (!data.contactEmail && !data.contactPhone) {
         return res.status(400).json({ error: 'contactEmail or contactPhone is required for PUBLIC_LIBRARY' });
       }
+      if (data.email && !data.email.endsWith(`@${tenant.emailDomain}`)) {
+        return res.status(400).json({ error: `El correo de acceso debe pertenecer al dominio ${tenant.emailDomain}` });
+      }
     }
 
     // Check uniqueness within tenant
+    if (data.email) {
+      const existingEmail = await prisma.user.findFirst({ where: { tenantId, email: data.email.toLowerCase() } });
+      if (existingEmail) return res.status(400).json({ error: 'EMAIL_TAKEN' });
+    }
     if (data.studentId) {
       const existingStudentId = await prisma.user.findFirst({ where: { tenantId, studentId: data.studentId } });
       if (existingStudentId) return res.status(400).json({ error: 'studentId already exists in tenant' });
@@ -156,6 +163,9 @@ const updateUser = async (req, res) => {
       const finalPhone = data.contactPhone !== undefined ? data.contactPhone : existing.contactPhone;
       if (!finalEmail && !finalPhone) {
         return res.status(400).json({ error: 'contactEmail or contactPhone is required for PUBLIC_LIBRARY' });
+      }
+      if (data.email && !data.email.endsWith(`@${tenant.emailDomain}`)) {
+        return res.status(400).json({ error: `El correo de acceso debe pertenecer al dominio ${tenant.emailDomain}` });
       }
     }
 

@@ -13,6 +13,18 @@ interface LoanItem {
   status: "Activo" | "Vencido" | "Devuelto";
 }
 
+interface DueTodayLoan {
+  id: string;
+  studentName: string;
+  bookTitle: string;
+  tenantType: "SCHOOL" | "PUBLIC_LIBRARY";
+  contactEmail: string | null;
+  contactPhone: string | null;
+  hasUsableEmail: boolean;
+  alreadyNotifiedToday: boolean;
+  lastReminderSentAt: string | null;
+}
+
 interface DashboardStats {
   books: number;
   activeLoans: number;
@@ -29,11 +41,15 @@ const money = new Intl.NumberFormat("es-MX", {
 export default function Dashboard() {
   const [stats, setStats] = useState<DashboardStats>({ books: 0, activeLoans: 0, students: 0, pendingFines: 0 });
   const [recentLoans, setRecentLoans] = useState<LoanItem[]>([]);
-  const [overdueLoans, setOverdueLoans] = useState<LoanItem[]>([]);
+  const [dueTodayLoans, setDueTodayLoans] = useState<DueTodayLoan[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusMessage, setStatusMessage] = useState("");
   const [finePerDay, setFinePerDay] = useState(5.0);
   const [savingFine, setSavingFine] = useState(false);
+  const [notifyingId, setNotifyingId] = useState<string | null>(null);
+  const [phoneNoticeId, setPhoneNoticeId] = useState<string | null>(null);
+  const [bulkNotifying, setBulkNotifying] = useState(false);
+  const [bulkSummary, setBulkSummary] = useState("");
 
   useEffect(() => {
     const fetchDashboardData = async () => {
@@ -41,16 +57,18 @@ export default function Dashboard() {
         setLoading(true);
         setStatusMessage("");
 
-        const [booksRes, usersRes, loansRes, settingsRes] = await Promise.all([
+        const [booksRes, usersRes, loansRes, settingsRes, dueTodayRes] = await Promise.all([
           api.get("/books"),
           api.get("/users?role=student"),
           api.get("/loans"),
-          api.get("/tenants/settings/current").catch(() => ({ data: { data: { finePerDay: 5.0 } } }))
+          api.get("/tenants/settings/current").catch(() => ({ data: { data: { finePerDay: 5.0 } } })),
+          api.get("/loans/due-today").catch(() => ({ data: { data: [] } })),
         ]);
 
         const books = Array.isArray(booksRes.data?.data) ? booksRes.data.data : [];
         const students = Array.isArray(usersRes.data?.data) ? usersRes.data.data : [];
         const loans = Array.isArray(loansRes.data?.data) ? loansRes.data.data : [];
+        setDueTodayLoans(Array.isArray(dueTodayRes.data?.data) ? dueTodayRes.data.data : []);
 
         if (settingsRes.data?.data?.finePerDay !== undefined) {
           setFinePerDay(settingsRes.data.data.finePerDay);
@@ -79,13 +97,10 @@ export default function Dashboard() {
         };
 
         setRecentLoans(loans.slice(0, 5).map(mapLoan));
-        setOverdueLoans(
-          loans.filter((loan: any) => loan.status === "ACTIVE" && loan.dueDate && new Date(loan.dueDate) < new Date()).map(mapLoan)
-        );
       } catch (err) {
         setStats({ books: 0, activeLoans: 0, students: 0, pendingFines: 0 });
         setRecentLoans([]);
-        setOverdueLoans([]);
+        setDueTodayLoans([]);
         setStatusMessage("Sin conexión al servidor");
       } finally {
         setLoading(false);
@@ -94,6 +109,49 @@ export default function Dashboard() {
 
     fetchDashboardData();
   }, []);
+
+  const reloadDueToday = async () => {
+    try {
+      const res = await api.get("/loans/due-today");
+      setDueTodayLoans(Array.isArray(res.data?.data) ? res.data.data : []);
+    } catch {
+      // si falla el refresh silencioso, se conserva el estado anterior en pantalla
+    }
+  };
+
+  const handleNotify = async (loan: DueTodayLoan) => {
+    if (!loan.hasUsableEmail) {
+      // Caso 3: solo hay teléfono, nunca se manda correo automático.
+      setPhoneNoticeId(loan.id);
+      return;
+    }
+    setPhoneNoticeId(null);
+    setNotifyingId(loan.id);
+    try {
+      await api.post(`/loans/${loan.id}/remind`);
+      await reloadDueToday();
+    } catch {
+      setStatusMessage("Error enviando el recordatorio");
+      setTimeout(() => setStatusMessage(""), 3000);
+    } finally {
+      setNotifyingId(null);
+    }
+  };
+
+  const handleNotifyAll = async () => {
+    setBulkNotifying(true);
+    setBulkSummary("");
+    try {
+      const res = await api.post("/loans/remind-all-due-today");
+      const { sent, skipped } = res.data?.data || { sent: 0, skipped: 0 };
+      setBulkSummary(`${sent} enviados, ${skipped} no se pudo${skipped === 1 ? "" : "n"} enviar automáticamente`);
+      await reloadDueToday();
+    } catch {
+      setBulkSummary("No se pudo completar la notificación masiva");
+    } finally {
+      setBulkNotifying(false);
+    }
+  };
 
   const handleSaveFine = async () => {
     setSavingFine(true);
@@ -112,7 +170,7 @@ export default function Dashboard() {
     <DashboardLayout>
       <div className="min-h-screen p-6 md:p-8 pt-8">
         <div className="mb-10">
-          <h1 className="text-4xl font-extrabold text-slate-900 dark:text-white tracking-tight">Dashboard</h1>
+          <h1 className="text-4xl font-extrabold text-slate-900 dark:text-white tracking-tight">Panel Principal</h1>
           <p className="text-slate-500 dark:text-slate-400 mt-2 font-medium">Panel unificado de control bibliotecario.</p>
           {statusMessage && <p className="text-red-500 dark:text-red-400 mt-2 text-sm font-semibold">{statusMessage}</p>}
         </div>
@@ -195,37 +253,79 @@ export default function Dashboard() {
         </div>
         </div>
         
-        {overdueLoans.length > 0 && (
-          <div className="mt-6 bg-red-50/50 dark:bg-red-900/10 backdrop-blur-2xl rounded-3xl shadow-xl border border-red-200 dark:border-red-900/30 overflow-hidden">
-            <div className="p-6 border-b border-red-200 dark:border-red-900/30">
-              <h2 className="text-lg font-bold text-red-700 dark:text-red-400">Préstamos Vencidos ({overdueLoans.length})</h2>
+        {dueTodayLoans.length > 0 && (
+          <div className="mt-6 bg-amber-50/50 dark:bg-amber-900/10 backdrop-blur-2xl rounded-3xl shadow-xl border border-amber-200 dark:border-amber-900/30 overflow-hidden">
+            <div className="p-6 border-b border-amber-200 dark:border-amber-900/30 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-bold text-amber-700 dark:text-amber-400">Préstamos que vencen hoy ({dueTodayLoans.length})</h2>
+                {bulkSummary && <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 font-medium">{bulkSummary}</p>}
+              </div>
+              <button
+                onClick={handleNotifyAll}
+                disabled={bulkNotifying || !dueTodayLoans.some((l) => l.hasUsableEmail)}
+                className="bg-amber-600 text-white px-4 py-2 rounded-lg text-xs font-semibold hover:bg-amber-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {bulkNotifying ? "Notificando..." : "Notificar a todos los pendientes"}
+              </button>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm text-left">
-                <thead className="bg-red-100/50 dark:bg-red-900/20 text-red-800 dark:text-red-300 font-semibold uppercase tracking-wider text-xs">
+                <thead className="bg-amber-100/50 dark:bg-amber-900/20 text-amber-800 dark:text-amber-300 font-semibold uppercase tracking-wider text-xs">
                   <tr>
                     <th className="px-6 py-4">Alumno</th>
                     <th className="px-6 py-4">Libro</th>
-                    <th className="px-6 py-4">Venció el</th>
+                    <th className="px-6 py-4">Tipo de plantel</th>
+                    <th className="px-6 py-4">Contacto disponible</th>
+                    <th className="px-6 py-4">¿Ya notificado?</th>
                     <th className="px-6 py-4 text-center">Acción</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-red-200 dark:divide-red-900/30">
-                  {overdueLoans.map((loan) => (
-                    <tr key={loan.id} className="hover:bg-red-100/30 dark:hover:bg-red-900/20 transition-colors">
+                <tbody className="divide-y divide-amber-200 dark:divide-amber-900/30">
+                  {dueTodayLoans.map((loan) => (
+                    <tr key={loan.id} className="hover:bg-amber-100/30 dark:hover:bg-amber-900/20 transition-colors align-top">
                       <td className="px-6 py-4 text-slate-800 dark:text-slate-200 font-medium">{loan.studentName}</td>
                       <td className="px-6 py-4 text-slate-600 dark:text-slate-400">{loan.bookTitle}</td>
-                      <td className="px-6 py-4 text-red-600 dark:text-red-400 font-semibold">{loan.dueDate}</td>
+                      <td className="px-6 py-4 text-slate-600 dark:text-slate-400">
+                        {loan.tenantType === "SCHOOL" ? "Escuela" : "Biblioteca pública"}
+                      </td>
+                      <td className="px-6 py-4 text-slate-600 dark:text-slate-400">
+                        {loan.hasUsableEmail ? (
+                          <span>{loan.contactEmail}</span>
+                        ) : loan.contactPhone ? (
+                          <span className="font-semibold text-slate-700 dark:text-slate-300">{loan.contactPhone}</span>
+                        ) : (
+                          <span className="text-red-500 dark:text-red-400 italic">Sin contacto</span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 text-slate-600 dark:text-slate-400">
+                        {loan.alreadyNotifiedToday
+                          ? `Sí, ${loan.lastReminderSentAt ? new Date(loan.lastReminderSentAt).toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" }) : ""}`
+                          : "No"}
+                      </td>
                       <td className="px-6 py-4 text-center">
-                        <button onClick={() => {
-                           api.post(`/loans/${loan.id}/remind`).then(() => {
-                             alert("Recordatorio enviado");
-                           }).catch(() => {
-                             alert("Error enviando recordatorio");
-                           });
-                        }} className="bg-red-600 text-white px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-red-700 transition">
-                          Recordatorio
-                        </button>
+                        {loan.hasUsableEmail ? (
+                          <button
+                            onClick={() => handleNotify(loan)}
+                            disabled={notifyingId === loan.id}
+                            className="bg-amber-600 text-white px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-amber-700 transition disabled:opacity-50"
+                          >
+                            {notifyingId === loan.id ? "..." : loan.alreadyNotifiedToday ? "Reenviar" : "Notificar"}
+                          </button>
+                        ) : (
+                          <div className="text-xs">
+                            <button
+                              onClick={() => handleNotify(loan)}
+                              className="text-slate-500 dark:text-slate-400 underline decoration-dotted hover:text-slate-700 dark:hover:text-slate-200"
+                            >
+                              Sin correo
+                            </button>
+                            {phoneNoticeId === loan.id && (
+                              <p className="mt-1 text-slate-600 dark:text-slate-300 font-medium max-w-[220px]">
+                                Este usuario no tiene correo de contacto. Contáctalo directamente al {loan.contactPhone || "número no registrado"}.
+                              </p>
+                            )}
+                          </div>
+                        )}
                       </td>
                     </tr>
                   ))}

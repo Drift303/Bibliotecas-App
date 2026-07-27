@@ -39,6 +39,7 @@ export default function Students() {
   const [tempPasswordModal, setTempPasswordModal] = useState<TempPasswordModal | null>(null);
   const [copiedPassword, setCopiedPassword] = useState(false);
   const tenantType = localStorage.getItem("tenantType") || "SCHOOL";
+  const tenantDomain = localStorage.getItem("tenantDomain") || "biblioteca.local";
 
   const [formData, setFormData] = useState({
     name: "",
@@ -156,9 +157,9 @@ export default function Students() {
 
     setActionError("");
 
-    const payload = {
+    const buildPayload = (email: string) => ({
       name: formData.name,
-      email: formData.email,
+      email,
       studentId: tenantType === "SCHOOL" ? formData.studentId : undefined,
       department: tenantType === "SCHOOL" ? (formData.department || "General") : undefined,
       barcode: tenantType === "SCHOOL" ? formData.studentId : undefined,
@@ -166,17 +167,45 @@ export default function Students() {
       contactPhone: tenantType === "PUBLIC_LIBRARY" && formData.contactPhone ? formData.contactPhone : undefined,
       role: "student",
       credentialImage: credentialImage || undefined,
-    };
+    });
 
     try {
       if (editingStudentId) {
-        await api.put(`/users/${editingStudentId}`, payload);
+        await api.put(`/users/${editingStudentId}`, buildPayload(formData.email));
         setShowForm(false);
         await loadStudents();
         return;
       }
 
-      const res = await api.post("/users", payload);
+      let res;
+      if (tenantType === "PUBLIC_LIBRARY") {
+        // Si el correo generado ya existe, reintentamos automáticamente con un
+        // sufijo numérico (nombre2@dominio, nombre3@dominio, ...) sin pedirle
+        // nada al bibliotecario, igual que el patrón usado en Schools.tsx.
+        const maxAttempts = 25;
+        let lastMessage = "";
+        for (let attempt = 0; attempt < maxAttempts; attempt++) {
+          const attemptEmail = attempt === 0 ? formData.email : buildGeneratedEmail(formData.name, attempt + 1);
+          try {
+            res = await api.post("/users", buildPayload(attemptEmail));
+            break;
+          } catch (err: any) {
+            const message = err?.response?.data?.error || err?.response?.data?.message || "";
+            if (message === "EMAIL_TAKEN") {
+              lastMessage = message;
+              continue; // correo ocupado: probamos el siguiente sufijo
+            }
+            throw err;
+          }
+        }
+        if (!res) {
+          setActionError("No se pudo generar un correo disponible, intenta de nuevo.");
+          return;
+        }
+      } else {
+        res = await api.post("/users", buildPayload(formData.email));
+      }
+
       const newUser = res.data.data;
 
       if (newUser?.tempPassword) {
@@ -193,7 +222,7 @@ export default function Students() {
     } catch (err: any) {
       const message = err?.response?.data?.error || err?.response?.data?.message || "";
 
-      if (message.includes("email")) {
+      if (message === "EMAIL_TAKEN" || message.includes("email")) {
         setActionError("Ya existe un alumno con ese correo, intenta con otra variación.");
       } else if (message.includes("studentId")) {
         setActionError("Ya existe un alumno con esa matricula");
@@ -203,13 +232,20 @@ export default function Students() {
     }
   };
 
+  const buildLocalPart = (name: string) =>
+    name.toLowerCase().trim().replace(/[^a-z0-9]/g, "") || "usuario";
+
+  const buildGeneratedEmail = (name: string, suffix?: number) => {
+    const local = buildLocalPart(name);
+    return suffix ? `${local}${suffix}@${tenantDomain}` : `${local}@${tenantDomain}`;
+  };
+
   const handleGenerateEmail = () => {
     if (!formData.name) {
       setActionError("Escribe el nombre primero para generar el correo");
       return;
     }
-    const baseEmail = formData.name.toLowerCase().trim().replace(/[^a-z0-9]/g, "") + "@biblioteca.local";
-    setFormData({ ...formData, email: baseEmail });
+    setFormData({ ...formData, email: buildGeneratedEmail(formData.name) });
   };
 
   const searchStudentLower = search.toLowerCase().trim();

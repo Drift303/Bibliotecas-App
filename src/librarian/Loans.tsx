@@ -10,6 +10,7 @@ interface Loan {
   book: string;
   loanDate: string;
   dueDate: string;
+  dueDateRaw: string | null;
   returnedDate: string | null;
   fine: number;
   status: "Activo" | "Vencido" | "Devuelto";
@@ -21,6 +22,9 @@ interface ReturnModalData {
   student: string;
   book: string;
   fine: number;
+  estimatedFine: number;
+  daysLate: number;
+  isEstimate: boolean;
 }
 
 const money = new Intl.NumberFormat("es-MX", {
@@ -33,19 +37,28 @@ export default function Loans() {
   const [loans, setLoans] = useState<Loan[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusMessage, setStatusMessage] = useState("");
+  const [finePerDay, setFinePerDay] = useState(5.0);
   
   // Estado para controlar el modal de flujo de devolución
   const [activeReturn, setActiveReturn] = useState<ReturnModalData | null>(null);
   const [bookCondition, setBookCondition] = useState("Excelente");
+  const [replacementCost, setReplacementCost] = useState<number>(0);
+  const [returnFormError, setReturnFormError] = useState("");
   const [submittingReturn, setSubmittingReturn] = useState(false);
 
   const loadLoans = async () => {
     try {
       setLoading(true);
       setStatusMessage("");
-      const res = await api.get("/loans");
-      const rawLoans = Array.isArray(res.data?.data) ? res.data.data : [];
+      const [loansRes, settingsRes] = await Promise.all([
+        api.get("/loans"),
+        api.get("/tenants/settings/current").catch(() => ({ data: { data: { finePerDay: 5.0 } } })),
+      ]);
+      const rawLoans = Array.isArray(loansRes.data?.data) ? loansRes.data.data : [];
       setLoans(rawLoans.map(mapLoan));
+      if (settingsRes.data?.data?.finePerDay !== undefined) {
+        setFinePerDay(settingsRes.data.data.finePerDay);
+      }
     } catch (err) {
       setLoans([]);
       setStatusMessage("No se pudieron cargar los préstamos");
@@ -54,28 +67,52 @@ export default function Loans() {
     }
   };
 
+  // Estimación de días de atraso y multa antes de confirmar la devolución.
+  // El monto real y definitivo siempre lo calcula el backend al confirmar
+  // (returnLoan), esto es solo un estimado para que el bibliotecario tenga
+  // referencia al abrir el modal.
+  const estimateFine = (loan: Loan) => {
+    if (loan.status !== "Vencido" || !loan.dueDateRaw) return { daysLate: 0, estimatedFine: 0 };
+    const due = new Date(loan.dueDateRaw);
+    const msPerDay = 1000 * 60 * 60 * 24;
+    const daysLate = Math.max(0, Math.ceil((Date.now() - due.getTime()) / msPerDay));
+    return { daysLate, estimatedFine: daysLate * finePerDay };
+  };
+
   useEffect(() => {
     loadLoans();
   }, []);
 
   // Abre el modal para configurar la devolución física
   const initiateReturnFlow = (loan: Loan) => {
+    const { daysLate, estimatedFine } = estimateFine(loan);
     setActiveReturn({
       loanId: loan.id,
       student: loan.student,
       book: loan.book,
       fine: loan.fine,
+      estimatedFine,
+      daysLate,
+      isEstimate: loan.fine === 0 && estimatedFine > 0,
     });
     setBookCondition("Excelente"); // Estado inicial por defecto
+    setReplacementCost(0);
+    setReturnFormError("");
   };
 
   // Procesa formalmente la devolución al backend enviando el estado físico
   const submitReturn = async () => {
     if (!activeReturn) return;
+    if (bookCondition === "Perdido" && !(replacementCost > 0)) {
+      setReturnFormError("Captura el costo de reposición para marcar el libro como perdido");
+      return;
+    }
+    setReturnFormError("");
     try {
       setSubmittingReturn(true);
       await api.post(`/loans/${activeReturn.loanId}/return`, {
         condition: bookCondition, // Enviamos el estado físico al backend de Ángel
+        ...(bookCondition === "Perdido" && replacementCost > 0 ? { replacementCost } : {}),
       });
       setActiveReturn(null);
       loadLoans();
@@ -231,11 +268,21 @@ export default function Loans() {
               <p className={isDark ? "text-slate-300" : "text-slate-700"}>
                 <span className="font-semibold">Libro:</span> {activeReturn.book}
               </p>
+              {activeReturn.isEstimate && activeReturn.daysLate > 0 && (
+                <p className={isDark ? "text-slate-300" : "text-slate-700"}>
+                  <span className="font-semibold">Días de atraso:</span> {activeReturn.daysLate}
+                </p>
+              )}
               <p className={isDark ? "text-slate-300" : "text-slate-700"}>
-                <span className="font-semibold">Multa acumulada:</span>{" "}
-                <span className={activeReturn.fine > 0 ? (isDark ? "text-red-400" : "text-red-600") + " font-bold" : (isDark ? "text-green-400" : "text-green-600") + " font-semibold"}>
-                  {money.format(activeReturn.fine)}
+                <span className="font-semibold">{activeReturn.isEstimate ? "Multa estimada:" : "Multa acumulada:"}</span>{" "}
+                <span className={(activeReturn.isEstimate ? activeReturn.estimatedFine : activeReturn.fine) > 0 ? (isDark ? "text-red-400" : "text-red-600") + " font-bold" : (isDark ? "text-green-400" : "text-green-600") + " font-semibold"}>
+                  {money.format(activeReturn.isEstimate ? activeReturn.estimatedFine : activeReturn.fine)}
                 </span>
+                {activeReturn.isEstimate && (
+                  <span className={`block text-xs mt-1 ${isDark ? "text-slate-500" : "text-slate-400"}`}>
+                    Estimado, puede variar según la fecha en la que confirmes la devolución.
+                  </span>
+                )}
               </p>
             </div>
 
@@ -257,6 +304,34 @@ export default function Loans() {
                 <option value="Dañado">Dañado (Requiere penalización/reparación)</option>
                 <option value="Perdido">Libro perdido (Paga costo de reposición)</option>
               </select>
+
+              {bookCondition === "Perdido" && (
+                <div className="mt-3">
+                  <label className={`block text-sm font-semibold mb-2 ${isDark ? "text-slate-300" : "text-slate-700"}`}>
+                    Costo de reposición (MXN)
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.5"
+                    value={replacementCost || ""}
+                    onChange={(e) => {
+                      setReplacementCost(Number(e.target.value));
+                      if (returnFormError) setReturnFormError("");
+                    }}
+                    placeholder="Ej. 350.00"
+                    className={`w-full px-3 py-2 rounded-lg border transition-colors ${
+                      isDark
+                        ? "bg-slate-800 border-slate-600 text-white focus:border-blue-500 focus:outline-none"
+                        : "bg-white border-slate-200 text-slate-900 focus:border-blue-500 focus:outline-none"
+                    }`}
+                  />
+                </div>
+              )}
+
+              {returnFormError && (
+                <p className={`mt-2 text-sm font-medium ${isDark ? "text-red-400" : "text-red-600"}`}>{returnFormError}</p>
+              )}
             </div>
 
             <div className="flex gap-3">
@@ -298,6 +373,7 @@ function mapLoan(loan: any): Loan {
     book: loan.book?.title || "Libro sin título",
     loanDate: formatDate(loan.createdAt),
     dueDate: formatDate(loan.dueDate),
+    dueDateRaw: loan.dueDate || null,
     returnedDate: loan.returnDate ? formatDate(loan.returnDate) : null,
     fine: Number(loan.fineAmount || 0),
     status: loan.status === "RETURNED" ? "Devuelto" : isOverdue ? "Vencido" : "Activo",
