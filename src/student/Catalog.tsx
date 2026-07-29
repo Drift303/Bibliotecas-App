@@ -114,7 +114,7 @@ export default function Catalog() {
         return (
           book.title.toLowerCase().includes(query) ||
           book.author.toLowerCase().includes(query) ||
-          book.isbn.toLowerCase().includes(query)
+          Boolean(book.isbn && book.isbn.toLowerCase().includes(query))
         );
       });
   }, [books, filter, searchText]);

@@ -271,7 +271,7 @@ export function useBookInventory() {
         (book) => {
           const matchesSearch = book.title.toLowerCase().includes(searchLower) ||
           book.author.toLowerCase().includes(searchLower) ||
-          book.isbn.toLowerCase().includes(searchLower) ||
+          Boolean(book.isbn && book.isbn.toLowerCase().includes(searchLower)) ||
           book.id.toString().toLowerCase().includes(searchLower);
 
           const matchesStatus = filterStatus === "Todos" || book.status === filterStatus;
