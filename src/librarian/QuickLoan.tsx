@@ -9,8 +9,10 @@ interface Student {
   id: string | number;
   name: string;
   email: string;
-  studentId: string;
-  department: string;
+  studentId: string | null;
+  department: string | null;
+  contactEmail?: string | null;
+  contactPhone?: string | null;
 }
 
 interface Book {
@@ -124,7 +126,7 @@ export default function QuickLoan() {
     ? exactStudentMatch
     : students.filter((s) =>
         s.name.toLowerCase().includes(searchStudentLower) ||
-        s.studentId.toLowerCase().includes(searchStudentLower)
+        Boolean(s.studentId && s.studentId.toLowerCase().includes(searchStudentLower))
       );
 
   const handleSelectStudent = (student: Student) => {
@@ -132,8 +134,8 @@ export default function QuickLoan() {
       ...form,
       userId: String(student.id),
       studentSearch: student.name,
-      studentId: student.studentId,
-      department: student.department,
+      studentId: student.studentId || "",
+      department: student.department || "",
     });
     setShowStudentSuggestions(false);
   };
@@ -309,7 +311,11 @@ export default function QuickLoan() {
                       className={`w-full text-left px-4 py-3 transition-colors border-b last:border-b-0 ${isDark ? "hover:bg-slate-600 text-white border-slate-600" : "hover:bg-[#F8F9FB] text-black border-[#E5E7EB]"}`}
                     >
                       <div className="font-medium">{student.name}</div>
-                      <div className={`text-sm ${isDark ? "text-slate-400" : "text-gray-500"}`}>{student.studentId} • {student.department}</div>
+                      <div className={`text-sm ${isDark ? "text-slate-400" : "text-gray-500"}`}>
+                        {student.studentId
+                          ? `${student.studentId} • ${student.department}`
+                          : student.contactEmail || student.contactPhone || "Biblioteca pública"}
+                      </div>
                     </button>
                   ))}
                 </div>
@@ -319,7 +325,9 @@ export default function QuickLoan() {
             {form.userId && (
               <div className={`mt-3 p-3 rounded-lg border transition-colors ${isDark ? "bg-green-900 border-green-700" : "bg-green-50 border-green-200"}`}>
                 <p className={`text-sm font-medium ${isDark ? "text-green-200" : "text-green-700"}`}>✅ {form.studentSearch}</p>
-                <p className={`text-xs ${isDark ? "text-green-300" : "text-green-600"}`}>Mat: {form.studentId} | {form.department}</p>
+                <p className={`text-xs ${isDark ? "text-green-300" : "text-green-600"}`}>
+                  {form.studentId ? `Mat: ${form.studentId} | ${form.department}` : "Lector de biblioteca pública"}
+                </p>
               </div>
             )}
           </div>

@@ -27,7 +27,7 @@ if (status === 'ACTIVE' || status === 'RETURNED') {
   where.status = status;
 } else if (status === 'OVERDUE') {
   where.status = 'ACTIVE';
-  where.dueDate = { lt: new Date() };
+  where.dueDate = { lt: getMxTodayStart() };
 }
 
     const loans = await prisma.loan.findMany({
@@ -39,7 +39,16 @@ if (status === 'ACTIVE' || status === 'RETURNED') {
       orderBy: { createdAt: 'desc' },
     });
 
-    res.json({ success: true, data: loans });
+    // isOverdue se calcula aquí (con el mismo criterio de día calendario de
+    // México que el resto del módulo) para que el frontend no tenga que
+    // recalcularlo comparando contra la hora local del navegador de quien
+    // esté viendo la pantalla, que puede no coincidir y desfasar el estado.
+    const data = loans.map((loan) => ({
+      ...loan,
+      isOverdue: loan.status === 'ACTIVE' && isPastDueDay(loan.dueDate),
+    }));
+
+    res.json({ success: true, data });
   } catch (err) {
     console.error('getLoans error', err);
     res.status(500).json({ error: 'Failed to fetch loans' });
@@ -112,10 +121,10 @@ const returnLoan = async (req, res) => {
       fineAmount = (typeof capturedCost === 'number' && capturedCost > 0)
         ? capturedCost
         : (loan.book.replacementCost || 500.0);
-    } else if (loan.dueDate && now > loan.dueDate) {
+    } else if (loan.dueDate && isPastDueDay(loan.dueDate)) {
       const msPerDay = 1000 * 60 * 60 * 24;
-      const diff = Math.ceil((now - loan.dueDate) / msPerDay);
-      fineAmount = diff * finePerDay; // usar el valor configurado por el tenant, no la constante
+      const diasAtraso = Math.round((getMxTodayStart().getTime() - new Date(loan.dueDate).getTime()) / msPerDay);
+      fineAmount = diasAtraso * finePerDay; // usar el valor configurado por el tenant, no la constante
     }
 
     // Si el bibliotecario capturó el estado físico del libro al devolverlo,
@@ -145,13 +154,39 @@ const returnLoan = async (req, res) => {
   }
 };
 
-// Rango [inicio, fin) del día de hoy en el servidor, usado para "vencen hoy".
+// Offset fijo de México central (UTC-6). México dejó de usar horario de
+// verano en la mayor parte del país desde 2022. Si el sistema llega a dar
+// servicio a planteles en otro huso horario del país (p. ej. Baja
+// California, UTC-8/-7), este valor tendría que volverse configurable por
+// tenant en vez de una constante global.
+const MX_UTC_OFFSET_HOURS = 6;
+
+// Rango [inicio, fin) del día de "hoy" en calendario de México, usado para
+// "vencen hoy". dueDate siempre se guarda como medianoche UTC del día
+// elegido (ver createLoan), sin importar en qué huso horario corra el
+// servidor. Por eso "hoy" se calcula aquí también en términos de ese mismo
+// día calendario (en vez de usar la hora local del proceso de Node, que
+// puede no coincidir con la de los usuarios y desfasar la comparación).
+const getMxTodayStart = () => {
+  const nowUtc = new Date();
+  const mxNow = new Date(nowUtc.getTime() - MX_UTC_OFFSET_HOURS * 60 * 60 * 1000);
+  return new Date(Date.UTC(mxNow.getUTCFullYear(), mxNow.getUTCMonth(), mxNow.getUTCDate()));
+};
+
 const getTodayRange = () => {
-  const start = new Date();
-  start.setHours(0, 0, 0, 0);
+  const start = getMxTodayStart();
   const end = new Date(start);
-  end.setDate(end.getDate() + 1);
+  end.setUTCDate(end.getUTCDate() + 1);
   return { start, end };
+};
+
+// Un préstamo solo se considera vencido cuando ya pasó COMPLETO el día
+// calendario (México) en que vencía. El día mismo del vencimiento no cuenta
+// como vencido: el lector todavía tiene todo ese día para devolver el libro
+// sin multa.
+const isPastDueDay = (dueDate) => {
+  if (!dueDate) return false;
+  return getMxTodayStart().getTime() > new Date(dueDate).getTime();
 };
 
 // Determina el correo utilizable para notificar a un lector, según tipo de tenant.

@@ -67,15 +67,24 @@ export default function Loans() {
     }
   };
 
+  // Debe coincidir con el mismo offset usado en backend/loanController.js
+  // (MX_UTC_OFFSET_HOURS) para que la estimación no se desfase un día.
+  const MX_UTC_OFFSET_HOURS = 6;
+  const getMxTodayStartMs = () => {
+    const nowUtc = new Date();
+    const mxNow = new Date(nowUtc.getTime() - MX_UTC_OFFSET_HOURS * 60 * 60 * 1000);
+    return Date.UTC(mxNow.getUTCFullYear(), mxNow.getUTCMonth(), mxNow.getUTCDate());
+  };
+
   // Estimación de días de atraso y multa antes de confirmar la devolución.
   // El monto real y definitivo siempre lo calcula el backend al confirmar
   // (returnLoan), esto es solo un estimado para que el bibliotecario tenga
   // referencia al abrir el modal.
   const estimateFine = (loan: Loan) => {
     if (loan.status !== "Vencido" || !loan.dueDateRaw) return { daysLate: 0, estimatedFine: 0 };
-    const due = new Date(loan.dueDateRaw);
+    const dueMs = new Date(loan.dueDateRaw).getTime();
     const msPerDay = 1000 * 60 * 60 * 24;
-    const daysLate = Math.max(0, Math.ceil((Date.now() - due.getTime()) / msPerDay));
+    const daysLate = Math.max(0, Math.round((getMxTodayStartMs() - dueMs) / msPerDay));
     return { daysLate, estimatedFine: daysLate * finePerDay };
   };
 
@@ -364,15 +373,18 @@ export default function Loans() {
 }
 
 function mapLoan(loan: any): Loan {
-  const dueDate = loan.dueDate ? new Date(loan.dueDate) : null;
-  const isOverdue = loan.status === "ACTIVE" && dueDate && dueDate < new Date();
+  // isOverdue ya viene calculado del backend con el criterio correcto de día
+  // calendario (México); no se recalcula aquí con el reloj del navegador,
+  // porque comparar contra la hora local del dispositivo desfasaba el
+  // resultado según la zona horaria de quien viera la pantalla.
+  const isOverdue = loan.status === "ACTIVE" && Boolean(loan.isOverdue);
 
   return {
     id: String(loan.id),
     student: loan.user?.name || "Alumno sin nombre",
     book: loan.book?.title || "Libro sin título",
     loanDate: formatDate(loan.createdAt),
-    dueDate: formatDate(loan.dueDate),
+    dueDate: formatDueDate(loan.dueDate),
     dueDateRaw: loan.dueDate || null,
     returnedDate: loan.returnDate ? formatDate(loan.returnDate) : null,
     fine: Number(loan.fineAmount || 0),
@@ -383,6 +395,15 @@ function mapLoan(loan: any): Loan {
 function formatDate(value: string | null | undefined) {
   if (!value) return "Sin fecha";
   return new Date(value).toLocaleDateString("es-MX");
+}
+
+// dueDate se guarda como fecha-sin-hora (medianoche UTC representando el día
+// calendario elegido). Si se formatea con la zona horaria local del navegador,
+// en zonas detrás de UTC (como México) se recorre un día hacia atrás. Por eso
+// esta fecha específica siempre se formatea en UTC.
+function formatDueDate(value: string | null | undefined) {
+  if (!value) return "Sin fecha";
+  return new Date(value).toLocaleDateString("es-MX", { timeZone: "UTC" });
 }
 
 function statusClass(status: Loan["status"], isDark: boolean) {

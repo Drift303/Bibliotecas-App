@@ -185,7 +185,7 @@ export default function Students() {
         const maxAttempts = 25;
         let lastMessage = "";
         for (let attempt = 0; attempt < maxAttempts; attempt++) {
-          const attemptEmail = attempt === 0 ? formData.email : buildGeneratedEmail(formData.name, attempt + 1);
+          const attemptEmail = attempt === 0 ? formData.email : buildGeneratedEmail(formData.name, attempt);
           try {
             res = await api.post("/users", buildPayload(attemptEmail));
             break;
@@ -232,12 +232,35 @@ export default function Students() {
     }
   };
 
-  const buildLocalPart = (name: string) =>
-    name.toLowerCase().trim().replace(/[^a-z0-9]/g, "") || "usuario";
+  // Genera el local-part del correo como iniciales + apellido, siguiendo el
+  // patrón típico mexicano (nombre(s) como iniciales + apellido paterno
+  // completo, descartando el apellido materno):
+  //   "Juan Carlos Rodríguez Martínez" -> "jcrodriguez"
+  //   "Ana López"                      -> "alopez"
+  //   "Madonna"                        -> "madonna"
+  const buildLocalPart = (name: string) => {
+    const words = name
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "") // quitar acentos conservando la letra base
+      .trim()
+      .split(/\s+/)
+      .map((w) => w.replace(/[^a-z0-9]/g, ""))
+      .filter(Boolean);
+
+    if (words.length === 0) return "usuario";
+    if (words.length === 1) return words[0];
+    if (words.length === 2) return words[0][0] + words[1];
+    // 3+ palabras: iniciales de todas menos las últimas dos + la penúltima
+    // completa (se descarta el último apellido).
+    const initials = words.slice(0, words.length - 2).map((w) => w[0]).join("");
+    return initials + words[words.length - 2];
+  };
 
   const buildGeneratedEmail = (name: string, suffix?: number) => {
     const local = buildLocalPart(name);
-    return suffix ? `${local}${suffix}@${tenantDomain}` : `${local}@${tenantDomain}`;
+    const suffixStr = suffix ? String(suffix).padStart(3, "0") : "";
+    return `${local}${suffixStr}@${tenantDomain}`;
   };
 
   const handleGenerateEmail = () => {
@@ -257,7 +280,7 @@ export default function Students() {
         return (
           student.name.toLowerCase().includes(searchStudentLower) ||
           student.email.toLowerCase().includes(searchStudentLower) ||
-          student.studentId.toLowerCase().includes(searchStudentLower)
+          Boolean(student.studentId && student.studentId.toLowerCase().includes(searchStudentLower))
         );
       });
 
@@ -365,10 +388,13 @@ export default function Students() {
             <div className="flex gap-2">
               <input
                 type="email"
-                placeholder="Correo de acceso"
+                placeholder={tenantType === "PUBLIC_LIBRARY" ? "Da clic en \"Generar\" →" : "Correo de acceso"}
                 value={formData.email}
                 onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                readOnly={tenantType === "PUBLIC_LIBRARY"}
                 className={`flex-1 px-4 py-2 rounded-lg border transition-colors ${
+                  tenantType === "PUBLIC_LIBRARY" ? "cursor-not-allowed opacity-80" : ""
+                } ${
                   isDark
                     ? "bg-slate-800 border-slate-600 text-white placeholder-slate-400 focus:border-blue-500 focus:outline-none"
                     : "bg-white border-slate-200 text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none"
@@ -380,10 +406,15 @@ export default function Students() {
                   onClick={handleGenerateEmail}
                   className="px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium text-sm transition-all"
                 >
-                  Generar
+                  {formData.email ? "Regenerar" : "Generar"}
                 </button>
               )}
             </div>
+            {tenantType === "PUBLIC_LIBRARY" && (
+              <p className={`text-xs -mt-2 ${isDark ? "text-slate-500" : "text-slate-400"}`}>
+                Este correo lo genera el sistema a partir del nombre; no se puede editar a mano.
+              </p>
+            )}
 
             {tenantType === "SCHOOL" && (
               <select
@@ -430,15 +461,17 @@ export default function Students() {
             )}
           </div>
 
-          <CredentialGenerator 
-            studentData={{
-              name: formData.name,
-              studentId: formData.studentId,
-              department: formData.department
-            }}
-            onGenerate={setCredentialImage}
-            isDark={isDark}
-          />
+          {tenantType === "SCHOOL" && (
+            <CredentialGenerator
+              studentData={{
+                name: formData.name,
+                studentId: formData.studentId,
+                department: formData.department
+              }}
+              onGenerate={setCredentialImage}
+              isDark={isDark}
+            />
+          )}
 
           <div className="flex gap-3 mt-6">
             <button

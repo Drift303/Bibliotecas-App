@@ -99,7 +99,7 @@ export default function AnnualCheck() {
 
   const handleProcessCode = (code: string) => {
     const codeLower = code.toLowerCase().trim();
-    const match = books.find(b => b.isbn.toLowerCase() === codeLower);
+    const match = books.find(b => b.isbn && b.isbn.toLowerCase() === codeLower);
     
     if (match) {
       setFoundBookIds(prev => {

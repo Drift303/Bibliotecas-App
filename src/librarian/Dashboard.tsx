@@ -86,12 +86,14 @@ export default function Dashboard() {
 
         const mapLoan = (loan: any): LoanItem => {
           const dueDate = loan.dueDate ? new Date(loan.dueDate) : null;
-          const isOverdue = loan.status === "ACTIVE" && dueDate && dueDate < new Date();
+          // isOverdue ya viene calculado del backend (día calendario de México);
+          // no se recalcula aquí con el reloj del navegador.
+          const isOverdue = loan.status === "ACTIVE" && Boolean(loan.isOverdue);
           return {
             id: String(loan.id),
             studentName: loan.user?.name || "Alumno sin nombre",
             bookTitle: loan.book?.title || "Libro sin título",
-            dueDate: dueDate ? dueDate.toLocaleDateString("es-MX") : undefined,
+            dueDate: dueDate ? dueDate.toLocaleDateString("es-MX", { timeZone: "UTC" }) : undefined,
             status: loan.status === "RETURNED" ? "Devuelto" : isOverdue ? "Vencido" : "Activo",
           };
         };
@@ -144,7 +146,11 @@ export default function Dashboard() {
     try {
       const res = await api.post("/loans/remind-all-due-today");
       const { sent, skipped } = res.data?.data || { sent: 0, skipped: 0 };
-      setBulkSummary(`${sent} enviados, ${skipped} no se pudo${skipped === 1 ? "" : "n"} enviar automáticamente`);
+      const lines = [`✅ ${sent} recordatorio${sent === 1 ? "" : "s"} enviado${sent === 1 ? "" : "s"}`];
+      if (skipped > 0) {
+        lines.push(`⚠️ ${skipped} no se pudo${skipped === 1 ? "" : "n"} enviar automáticamente (revisa su teléfono en la tabla)`);
+      }
+      setBulkSummary(lines.join("\n"));
       await reloadDueToday();
     } catch {
       setBulkSummary("No se pudo completar la notificación masiva");
@@ -253,12 +259,13 @@ export default function Dashboard() {
         </div>
         </div>
         
-        {dueTodayLoans.length > 0 && (
-          <div className="mt-6 bg-amber-50/50 dark:bg-amber-900/10 backdrop-blur-2xl rounded-3xl shadow-xl border border-amber-200 dark:border-amber-900/30 overflow-hidden">
+        <div className="mt-6 bg-amber-50/50 dark:bg-amber-900/10 backdrop-blur-2xl rounded-3xl shadow-xl border border-amber-200 dark:border-amber-900/30 overflow-hidden">
             <div className="p-6 border-b border-amber-200 dark:border-amber-900/30 flex flex-wrap items-center justify-between gap-3">
               <div>
                 <h2 className="text-lg font-bold text-amber-700 dark:text-amber-400">Préstamos que vencen hoy ({dueTodayLoans.length})</h2>
-                {bulkSummary && <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 font-medium">{bulkSummary}</p>}
+                {bulkSummary && (
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 font-medium whitespace-pre-line">{bulkSummary}</p>
+                )}
               </div>
               <button
                 onClick={handleNotifyAll}
@@ -268,6 +275,11 @@ export default function Dashboard() {
                 {bulkNotifying ? "Notificando..." : "Notificar a todos los pendientes"}
               </button>
             </div>
+            {dueTodayLoans.length === 0 ? (
+              <div className="p-8 text-center text-sm font-medium text-slate-500 dark:text-slate-400">
+                No hay préstamos que venzan hoy.
+              </div>
+            ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm text-left">
                 <thead className="bg-amber-100/50 dark:bg-amber-900/20 text-amber-800 dark:text-amber-300 font-semibold uppercase tracking-wider text-xs">
@@ -292,15 +304,17 @@ export default function Dashboard() {
                         {loan.hasUsableEmail ? (
                           <span>{loan.contactEmail}</span>
                         ) : loan.contactPhone ? (
-                          <span className="font-semibold text-slate-700 dark:text-slate-300">{loan.contactPhone}</span>
+                          <span className="font-semibold text-slate-700 dark:text-slate-300">{loan.contactPhone} (sin correo)</span>
                         ) : (
                           <span className="text-red-500 dark:text-red-400 italic">Sin contacto</span>
                         )}
                       </td>
                       <td className="px-6 py-4 text-slate-600 dark:text-slate-400">
                         {loan.alreadyNotifiedToday
-                          ? `Sí, ${loan.lastReminderSentAt ? new Date(loan.lastReminderSentAt).toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" }) : ""}`
-                          : "No"}
+                          ? `✅ Sí, ${loan.lastReminderSentAt ? new Date(loan.lastReminderSentAt).toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" }) : ""}`
+                          : loan.hasUsableEmail
+                          ? "❌ No"
+                          : "❌ No se pudo enviar"}
                       </td>
                       <td className="px-6 py-4 text-center">
                         {loan.hasUsableEmail ? (
@@ -315,9 +329,9 @@ export default function Dashboard() {
                           <div className="text-xs">
                             <button
                               onClick={() => handleNotify(loan)}
-                              className="text-slate-500 dark:text-slate-400 underline decoration-dotted hover:text-slate-700 dark:hover:text-slate-200"
+                              className="bg-amber-600 text-white px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-amber-700 transition"
                             >
-                              Sin correo
+                              Notificar
                             </button>
                             {phoneNoticeId === loan.id && (
                               <p className="mt-1 text-slate-600 dark:text-slate-300 font-medium max-w-[220px]">
@@ -332,8 +346,8 @@ export default function Dashboard() {
                 </tbody>
               </table>
             </div>
-          </div>
-        )}
+            )}
+        </div>
       </div>
     </DashboardLayout>
   );
