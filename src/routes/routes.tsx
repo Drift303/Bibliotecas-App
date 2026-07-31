@@ -30,8 +30,8 @@ export default function AppRoutes() {
         <Route path="/students" element={<ProtectedRoute><Students /></ProtectedRoute>} />
         <Route path="/departments" element={<ProtectedRoute><Departments /></ProtectedRoute>} />
         <Route path="/catalog" element={<ProtectedRoute><Catalog /></ProtectedRoute>} />
-        <Route path="/schools" element={<ProtectedRoute><Schools /></ProtectedRoute>} />
-        <Route path="/billing" element={<ProtectedRoute><Billing /></ProtectedRoute>} />
+        <Route path="/schools" element={<ProtectedRoute allowedRoles={["superadmin"]}><Schools /></ProtectedRoute>} />
+        <Route path="/billing" element={<ProtectedRoute allowedRoles={["superadmin"]}><Billing /></ProtectedRoute>} />
         <Route path="/loans" element={<ProtectedRoute><Loans /></ProtectedRoute>} />
         <Route path="/annual-inventory" element={<ProtectedRoute><AnnualCheck /></ProtectedRoute>} />
         <Route path="/map-location" element={<ProtectedRoute><MapLocation /></ProtectedRoute>} />
