@@ -18,7 +18,6 @@ datasource db {
 // MODELOS — idénticos al schema principal
 // Enums reemplazados por String con comentarios de valores válidos
 
-
 model Tenant {
   id              String    @id @default(uuid())
   name            String

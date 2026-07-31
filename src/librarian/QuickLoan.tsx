@@ -9,8 +9,10 @@ interface Student {
   id: string | number;
   name: string;
   email: string;
-  studentId: string;
-  department: string;
+  studentId: string | null;
+  department: string | null;
+  contactEmail?: string | null;
+  contactPhone?: string | null;
 }
 
 interface Book {
@@ -64,18 +66,29 @@ export default function QuickLoan() {
     bookSearch: "",
     bookTitle: "",
     dueDate: "",
+    departmentId: "",
+    loanType: "HOME" as "HOME" | "IN_LIBRARY",
   });
+
+  const [departments, setDepartments] = useState<{ id: string; name: string }[]>([]);
+  const tenantType = localStorage.getItem("tenantType") || "SCHOOL";
 
   // --- CARGAR ESTUDIANTES Y LIBROS ---
   useEffect(() => {
     const loadData = async () => {
       setLoading(true);
       try {
-        const [studentsRes, booksRes, loansRes] = await Promise.all([
+        const [studentsRes, booksRes, loansRes, departmentsRes] = await Promise.all([
           api.get("/users", { params: { role: "student" } }),
           api.get("/books"),
           api.get("/loans"),
+          tenantType === "SCHOOL" ? api.get("/departments") : Promise.resolve({ data: { data: [] } }),
         ]);
+
+        const rawDepartments = departmentsRes.data?.success
+          ? departmentsRes.data.data
+          : departmentsRes.data || [];
+        setDepartments(Array.isArray(rawDepartments) ? rawDepartments : []);
 
         const rawStudents = studentsRes.data?.success
           ? studentsRes.data.data
@@ -124,7 +137,7 @@ export default function QuickLoan() {
     ? exactStudentMatch
     : students.filter((s) =>
         s.name.toLowerCase().includes(searchStudentLower) ||
-        s.studentId.toLowerCase().includes(searchStudentLower)
+        Boolean(s.studentId && s.studentId.toLowerCase().includes(searchStudentLower))
       );
 
   const handleSelectStudent = (student: Student) => {
@@ -132,8 +145,8 @@ export default function QuickLoan() {
       ...form,
       userId: String(student.id),
       studentSearch: student.name,
-      studentId: student.studentId,
-      department: student.department,
+      studentId: student.studentId || "",
+      department: student.department || "",
     });
     setShowStudentSuggestions(false);
   };
@@ -211,6 +224,8 @@ export default function QuickLoan() {
         userId: form.userId,
         bookId: form.bookId,
         dueDate: form.dueDate,
+        loanType: form.loanType,
+        departmentId: form.departmentId || undefined,
       });
 
       const newLoan = res.data?.success ? res.data.data : res.data;
@@ -228,6 +243,8 @@ export default function QuickLoan() {
         bookSearch: "",
         bookTitle: "",
         dueDate: "",
+        departmentId: "",
+        loanType: "HOME",
       });
       setStatusMessage("✅ Préstamo registrado correctamente");
       setStatusType("ok");
@@ -309,7 +326,11 @@ export default function QuickLoan() {
                       className={`w-full text-left px-4 py-3 transition-colors border-b last:border-b-0 ${isDark ? "hover:bg-slate-600 text-white border-slate-600" : "hover:bg-[#F8F9FB] text-black border-[#E5E7EB]"}`}
                     >
                       <div className="font-medium">{student.name}</div>
-                      <div className={`text-sm ${isDark ? "text-slate-400" : "text-gray-500"}`}>{student.studentId} • {student.department}</div>
+                      <div className={`text-sm ${isDark ? "text-slate-400" : "text-gray-500"}`}>
+                        {student.studentId
+                          ? `${student.studentId} • ${student.department}`
+                          : student.contactEmail || student.contactPhone || "Biblioteca pública"}
+                      </div>
                     </button>
                   ))}
                 </div>
@@ -319,7 +340,9 @@ export default function QuickLoan() {
             {form.userId && (
               <div className={`mt-3 p-3 rounded-lg border transition-colors ${isDark ? "bg-green-900 border-green-700" : "bg-green-50 border-green-200"}`}>
                 <p className={`text-sm font-medium ${isDark ? "text-green-200" : "text-green-700"}`}>✅ {form.studentSearch}</p>
-                <p className={`text-xs ${isDark ? "text-green-300" : "text-green-600"}`}>Mat: {form.studentId} | {form.department}</p>
+                <p className={`text-xs ${isDark ? "text-green-300" : "text-green-600"}`}>
+                  {form.studentId ? `Mat: ${form.studentId} | ${form.department}` : "Lector de biblioteca pública"}
+                </p>
               </div>
             )}
           </div>
@@ -392,6 +415,50 @@ export default function QuickLoan() {
             onChange={(e) => setForm({ ...form, dueDate: e.target.value })}
             className={`w-full border p-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#3B82F6] transition-colors ${isDark ? "bg-slate-700 border-slate-600 text-white" : "border-[#E5E7EB] bg-white text-black"}`}
           />
+        </div>
+
+        {tenantType === "SCHOOL" && (
+          <div className="mt-4">
+            <label className={`block mb-2 text-sm font-medium ${isDark ? "text-slate-300" : "text-gray-700"}`}>
+              🏫 Departamento / Carrera
+            </label>
+            <select
+              value={form.departmentId}
+              onChange={(e) => setForm({ ...form, departmentId: e.target.value })}
+              className={`w-full border p-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#3B82F6] transition-colors ${isDark ? "bg-slate-700 border-slate-600 text-white" : "border-[#E5E7EB] bg-white text-black"}`}
+            >
+              <option value="">Selecciona uno (opcional)</option>
+              {departments.map((dep) => (
+                <option key={dep.id} value={dep.id}>{dep.name}</option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        <div className="mt-4">
+          <label className={`block mb-2 text-sm font-medium ${isDark ? "text-slate-300" : "text-gray-700"}`}>
+            📖 Tipo de préstamo
+          </label>
+          <div className="flex gap-4">
+            <label className={`flex items-center gap-2 ${isDark ? "text-slate-200" : "text-black"}`}>
+              <input
+                type="radio"
+                name="loanType"
+                checked={form.loanType === "HOME"}
+                onChange={() => setForm({ ...form, loanType: "HOME" })}
+              />
+              A domicilio
+            </label>
+            <label className={`flex items-center gap-2 ${isDark ? "text-slate-200" : "text-black"}`}>
+              <input
+                type="radio"
+                name="loanType"
+                checked={form.loanType === "IN_LIBRARY"}
+                onChange={() => setForm({ ...form, loanType: "IN_LIBRARY" })}
+              />
+              En sala
+            </label>
+          </div>
         </div>
 
         <div className="flex gap-4 mt-6">

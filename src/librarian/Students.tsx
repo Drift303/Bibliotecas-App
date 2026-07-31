@@ -20,9 +20,15 @@ interface TempPasswordModal {
   tempPassword: string;
 }
 
+interface Department {
+  id: string;
+  name: string;
+}
+
 export default function Students() {
   const { isDark } = useTheme();
   const [students, setStudents] = useState<Student[]>([]);
+  const [departmentsList, setDepartmentsList] = useState<Department[]>([]);
   const [search, setSearch] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [editingStudentId, setEditingStudentId] = useState<string | number | null>(null);
@@ -32,12 +38,17 @@ export default function Students() {
   const [statusType, setStatusType] = useState<"ok" | "error" | "info">("info");
   const [tempPasswordModal, setTempPasswordModal] = useState<TempPasswordModal | null>(null);
   const [copiedPassword, setCopiedPassword] = useState(false);
+  const tenantType = localStorage.getItem("tenantType") || "SCHOOL";
+  const tenantDomain = localStorage.getItem("tenantDomain") || "biblioteca.local";
 
   const [formData, setFormData] = useState({
     name: "",
     email: "",
     studentId: "",
     department: "",
+    contactEmail: "",
+    contactPhone: "",
+    gender: "",
     role: "student",
   });
 
@@ -46,10 +57,15 @@ export default function Students() {
   const loadStudents = async () => {
     setLoading(true);
     try {
-      const res = await api.get("/users?role=student");
-      const studentsList = Array.isArray(res.data.data) ? res.data.data : [];
+      const [resStudents, resDepts] = await Promise.all([
+        api.get("/users?role=student"),
+        tenantType === "SCHOOL" ? api.get("/departments") : Promise.resolve({ data: { data: [] } })
+      ]);
+      const studentsList = Array.isArray(resStudents.data.data) ? resStudents.data.data : [];
+      const deptsList = Array.isArray(resDepts.data.data) ? resDepts.data.data : [];
 
       setStudents(studentsList);
+      setDepartmentsList(deptsList);
       setStatusType("ok");
       setStatusMessage(
         studentsList.length > 0
@@ -75,6 +91,8 @@ export default function Students() {
       email: "",
       studentId: "",
       department: "",
+      contactEmail: "",
+      contactPhone: "",
       role: "student",
     });
   };
@@ -97,8 +115,11 @@ export default function Students() {
     setFormData({
       name: student.name,
       email: student.email,
-      studentId: student.studentId,
-      department: student.department,
+      studentId: student.studentId || "",
+      department: student.department || "",
+      contactEmail: (student as any).contactEmail || "",
+      contactPhone: (student as any).contactPhone || "",
+      gender: (student as any).gender || "",
       role: student.role,
     });
     setShowForm(true);
@@ -120,32 +141,74 @@ export default function Students() {
   };
 
   const handleSaveStudent = async () => {
-    if (!formData.name || !formData.email || !formData.studentId) {
-      setActionError("Completa nombre, correo y matricula");
-      return;
+    if (tenantType === "SCHOOL") {
+      if (!formData.name || !formData.email || !formData.studentId) {
+        setActionError("Completa nombre, correo y matricula");
+        return;
+      }
+    } else {
+      if (!formData.name || !formData.email) {
+        setActionError("Completa nombre y correo de acceso");
+        return;
+      }
+      if (!formData.contactEmail && !formData.contactPhone) {
+        setActionError("Completa al menos un medio de contacto (correo o teléfono)");
+        return;
+      }
     }
 
     setActionError("");
 
-    const payload = {
+    const buildPayload = (email: string) => ({
       name: formData.name,
-      email: formData.email,
-      studentId: formData.studentId,
-      department: formData.department || "General",
-      barcode: formData.studentId,
+      email,
+      studentId: tenantType === "SCHOOL" ? formData.studentId : undefined,
+      department: tenantType === "SCHOOL" ? (formData.department || "General") : undefined,
+      barcode: tenantType === "SCHOOL" ? formData.studentId : undefined,
+      contactEmail: tenantType === "PUBLIC_LIBRARY" && formData.contactEmail ? formData.contactEmail : undefined,
+      contactPhone: tenantType === "PUBLIC_LIBRARY" && formData.contactPhone ? formData.contactPhone : undefined,
+      gender: formData.gender || undefined,
       role: "student",
       credentialImage: credentialImage || undefined,
-    };
+    });
 
     try {
       if (editingStudentId) {
-        await api.put(`/users/${editingStudentId}`, payload);
+        await api.put(`/users/${editingStudentId}`, buildPayload(formData.email));
         setShowForm(false);
         await loadStudents();
         return;
       }
 
-      const res = await api.post("/users", payload);
+      let res;
+      if (tenantType === "PUBLIC_LIBRARY") {
+        // Si el correo generado ya existe, reintentamos automáticamente con un
+        // sufijo numérico (nombre2@dominio, nombre3@dominio, ...) sin pedirle
+        // nada al bibliotecario, igual que el patrón usado en Schools.tsx.
+        const maxAttempts = 25;
+        let lastMessage = "";
+        for (let attempt = 0; attempt < maxAttempts; attempt++) {
+          const attemptEmail = attempt === 0 ? formData.email : buildGeneratedEmail(formData.name, attempt);
+          try {
+            res = await api.post("/users", buildPayload(attemptEmail));
+            break;
+          } catch (err: any) {
+            const message = err?.response?.data?.error || err?.response?.data?.message || "";
+            if (message === "EMAIL_TAKEN") {
+              lastMessage = message;
+              continue; // correo ocupado: probamos el siguiente sufijo
+            }
+            throw err;
+          }
+        }
+        if (!res) {
+          setActionError("No se pudo generar un correo disponible, intenta de nuevo.");
+          return;
+        }
+      } else {
+        res = await api.post("/users", buildPayload(formData.email));
+      }
+
       const newUser = res.data.data;
 
       if (newUser?.tempPassword) {
@@ -162,14 +225,53 @@ export default function Students() {
     } catch (err: any) {
       const message = err?.response?.data?.error || err?.response?.data?.message || "";
 
-      if (message.includes("email")) {
-        setActionError("Ya existe un alumno con ese correo");
+      if (message === "EMAIL_TAKEN" || message.includes("email")) {
+        setActionError("Ya existe un alumno con ese correo, intenta con otra variación.");
       } else if (message.includes("studentId")) {
         setActionError("Ya existe un alumno con esa matricula");
       } else {
         setActionError("No se pudo registrar al alumno");
       }
     }
+  };
+
+  // Genera el local-part del correo como iniciales + apellido, siguiendo el
+  // patrón típico mexicano (nombre(s) como iniciales + apellido paterno
+  // completo, descartando el apellido materno):
+  //   "Juan Carlos Rodríguez Martínez" -> "jcrodriguez"
+  //   "Ana López"                      -> "alopez"
+  //   "Madonna"                        -> "madonna"
+  const buildLocalPart = (name: string) => {
+    const words = name
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "") // quitar acentos conservando la letra base
+      .trim()
+      .split(/\s+/)
+      .map((w) => w.replace(/[^a-z0-9]/g, ""))
+      .filter(Boolean);
+
+    if (words.length === 0) return "usuario";
+    if (words.length === 1) return words[0];
+    if (words.length === 2) return words[0][0] + words[1];
+    // 3+ palabras: iniciales de todas menos las últimas dos + la penúltima
+    // completa (se descarta el último apellido).
+    const initials = words.slice(0, words.length - 2).map((w) => w[0]).join("");
+    return initials + words[words.length - 2];
+  };
+
+  const buildGeneratedEmail = (name: string, suffix?: number) => {
+    const local = buildLocalPart(name);
+    const suffixStr = suffix ? String(suffix).padStart(3, "0") : "";
+    return `${local}${suffixStr}@${tenantDomain}`;
+  };
+
+  const handleGenerateEmail = () => {
+    if (!formData.name) {
+      setActionError("Escribe el nombre primero para generar el correo");
+      return;
+    }
+    setFormData({ ...formData, email: buildGeneratedEmail(formData.name) });
   };
 
   const searchStudentLower = search.toLowerCase().trim();
@@ -181,7 +283,7 @@ export default function Students() {
         return (
           student.name.toLowerCase().includes(searchStudentLower) ||
           student.email.toLowerCase().includes(searchStudentLower) ||
-          student.studentId.toLowerCase().includes(searchStudentLower)
+          Boolean(student.studentId && student.studentId.toLowerCase().includes(searchStudentLower))
         );
       });
 
@@ -262,18 +364,6 @@ export default function Students() {
           <div className="grid md:grid-cols-2 gap-4">
             <input
               type="text"
-              placeholder="Matricula"
-              value={formData.studentId}
-              onChange={(e) => setFormData({ ...formData, studentId: e.target.value })}
-              className={`px-4 py-2 rounded-lg border transition-colors ${
-                isDark
-                  ? "bg-slate-800 border-slate-600 text-white placeholder-slate-400 focus:border-blue-500 focus:outline-none"
-                  : "bg-white border-slate-200 text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none"
-              }`}
-            />
-
-            <input
-              type="text"
               placeholder="Nombre completo"
               value={formData.name}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
@@ -284,40 +374,122 @@ export default function Students() {
               }`}
             />
 
-            <input
-              type="email"
-              placeholder="Correo"
-              value={formData.email}
-              onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-              className={`px-4 py-2 rounded-lg border transition-colors ${
-                isDark
-                  ? "bg-slate-800 border-slate-600 text-white placeholder-slate-400 focus:border-blue-500 focus:outline-none"
-                  : "bg-white border-slate-200 text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none"
-              }`}
-            />
+            {tenantType === "SCHOOL" && (
+              <input
+                type="text"
+                placeholder="Matricula"
+                value={formData.studentId}
+                onChange={(e) => setFormData({ ...formData, studentId: e.target.value })}
+                className={`px-4 py-2 rounded-lg border transition-colors ${
+                  isDark
+                    ? "bg-slate-800 border-slate-600 text-white placeholder-slate-400 focus:border-blue-500 focus:outline-none"
+                    : "bg-white border-slate-200 text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none"
+                }`}
+              />
+            )}
 
-            <input
-              type="text"
-              placeholder="Departamento"
-              value={formData.department}
-              onChange={(e) => setFormData({ ...formData, department: e.target.value })}
+            <div className="flex gap-2">
+              <input
+                type="email"
+                placeholder={tenantType === "PUBLIC_LIBRARY" ? "Da clic en \"Generar\" →" : "Correo de acceso"}
+                value={formData.email}
+                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                readOnly={tenantType === "PUBLIC_LIBRARY"}
+                className={`flex-1 px-4 py-2 rounded-lg border transition-colors ${
+                  tenantType === "PUBLIC_LIBRARY" ? "cursor-not-allowed opacity-80" : ""
+                } ${
+                  isDark
+                    ? "bg-slate-800 border-slate-600 text-white placeholder-slate-400 focus:border-blue-500 focus:outline-none"
+                    : "bg-white border-slate-200 text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none"
+                }`}
+              />
+              {tenantType === "PUBLIC_LIBRARY" && (
+                <button
+                  type="button"
+                  onClick={handleGenerateEmail}
+                  className="px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium text-sm transition-all"
+                >
+                  {formData.email ? "Regenerar" : "Generar"}
+                </button>
+              )}
+            </div>
+            {tenantType === "PUBLIC_LIBRARY" && (
+              <p className={`text-xs -mt-2 ${isDark ? "text-slate-500" : "text-slate-400"}`}>
+                Este correo lo genera el sistema a partir del nombre; no se puede editar a mano.
+              </p>
+            )}
+
+            {tenantType === "SCHOOL" && (
+              <select
+                value={formData.department}
+                onChange={(e) => setFormData({ ...formData, department: e.target.value })}
+                className={`px-4 py-2 rounded-lg border transition-colors ${
+                  isDark
+                    ? "bg-slate-800 border-slate-600 text-white focus:border-blue-500 focus:outline-none"
+                    : "bg-white border-slate-200 text-slate-900 focus:border-blue-500 focus:outline-none"
+                }`}
+              >
+                <option value="">Selecciona Departamento / Carrera</option>
+                {departmentsList.map(dep => (
+                  <option key={dep.id} value={dep.name}>{dep.name}</option>
+                ))}
+              </select>
+            )}
+
+            <select
+              value={formData.gender}
+              onChange={(e) => setFormData({ ...formData, gender: e.target.value })}
               className={`px-4 py-2 rounded-lg border transition-colors ${
                 isDark
-                  ? "bg-slate-800 border-slate-600 text-white placeholder-slate-400 focus:border-blue-500 focus:outline-none"
-                  : "bg-white border-slate-200 text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none"
+                  ? "bg-slate-800 border-slate-600 text-white focus:border-blue-500 focus:outline-none"
+                  : "bg-white border-slate-200 text-slate-900 focus:border-blue-500 focus:outline-none"
               }`}
-            />
+            >
+              <option value="">Género (opcional)</option>
+              <option value="MALE">Hombre</option>
+              <option value="FEMALE">Mujer</option>
+              <option value="OTHER">Otro</option>
+            </select>
+
+            {tenantType === "PUBLIC_LIBRARY" && (
+              <>
+                <input
+                  type="email"
+                  placeholder="Correo de contacto real"
+                  value={formData.contactEmail}
+                  onChange={(e) => setFormData({ ...formData, contactEmail: e.target.value })}
+                  className={`px-4 py-2 rounded-lg border transition-colors ${
+                    isDark
+                      ? "bg-slate-800 border-slate-600 text-white placeholder-slate-400 focus:border-blue-500 focus:outline-none"
+                      : "bg-white border-slate-200 text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none"
+                  }`}
+                />
+                <input
+                  type="tel"
+                  placeholder="Teléfono de contacto"
+                  value={formData.contactPhone}
+                  onChange={(e) => setFormData({ ...formData, contactPhone: e.target.value })}
+                  className={`px-4 py-2 rounded-lg border transition-colors ${
+                    isDark
+                      ? "bg-slate-800 border-slate-600 text-white placeholder-slate-400 focus:border-blue-500 focus:outline-none"
+                      : "bg-white border-slate-200 text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none"
+                  }`}
+                />
+              </>
+            )}
           </div>
 
-          <CredentialGenerator 
-            studentData={{
-              name: formData.name,
-              studentId: formData.studentId,
-              department: formData.department
-            }}
-            onGenerate={setCredentialImage}
-            isDark={isDark}
-          />
+          {tenantType === "SCHOOL" && (
+            <CredentialGenerator
+              studentData={{
+                name: formData.name,
+                studentId: formData.studentId,
+                department: formData.department
+              }}
+              onGenerate={setCredentialImage}
+              isDark={isDark}
+            />
+          )}
 
           <div className="flex gap-3 mt-6">
             <button
@@ -371,10 +543,11 @@ export default function Students() {
               } border-b`}
             >
               <tr>
-                <th className="p-3 text-left font-semibold">Matricula</th>
+                {tenantType === "SCHOOL" && <th className="p-3 text-left font-semibold">Matricula</th>}
                 <th className="p-3 text-left font-semibold">Nombre</th>
-                <th className="p-3 text-left font-semibold">Correo</th>
-                <th className="p-3 text-left font-semibold">Depto.</th>
+                <th className="p-3 text-left font-semibold">Correo Acceso</th>
+                {tenantType === "SCHOOL" && <th className="p-3 text-left font-semibold">Depto.</th>}
+                {tenantType === "PUBLIC_LIBRARY" && <th className="p-3 text-left font-semibold">Contacto</th>}
                 <th className="p-3 text-center font-semibold">Acciones</th>
               </tr>
             </thead>
@@ -392,18 +565,27 @@ export default function Students() {
                       : "bg-slate-50 hover:bg-slate-100"
                   }`}
                 >
-                  <td className={`p-3 font-mono text-sm ${isDark ? "text-slate-300" : "text-slate-700"}`}>
-                    {student.studentId}
-                  </td>
+                  {tenantType === "SCHOOL" && (
+                    <td className={`p-3 font-mono text-sm ${isDark ? "text-slate-300" : "text-slate-700"}`}>
+                      {student.studentId}
+                    </td>
+                  )}
                   <td className={`p-3 font-medium ${isDark ? "text-white" : "text-slate-900"}`}>
                     {student.name}
                   </td>
                   <td className={`p-3 ${isDark ? "text-slate-400" : "text-slate-600"}`}>
                     {student.email}
                   </td>
-                  <td className={`p-3 text-sm ${isDark ? "text-slate-400" : "text-slate-600"}`}>
-                    {student.department}
-                  </td>
+                  {tenantType === "SCHOOL" && (
+                    <td className={`p-3 text-sm ${isDark ? "text-slate-400" : "text-slate-600"}`}>
+                      {student.department}
+                    </td>
+                  )}
+                  {tenantType === "PUBLIC_LIBRARY" && (
+                    <td className={`p-3 text-sm ${isDark ? "text-slate-400" : "text-slate-600"}`}>
+                      {(student as any).contactEmail || (student as any).contactPhone}
+                    </td>
+                  )}
                   <td className="p-3 text-center">
                     <div className="flex items-center justify-center gap-2">
                       <button

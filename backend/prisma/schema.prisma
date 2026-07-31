@@ -12,18 +12,47 @@ enum TenantStatus {
   SUSPENDED
 }
 
+enum TenantType {
+  SCHOOL
+  PUBLIC_LIBRARY
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+}
+
+enum LoanType {
+  HOME         // préstamo a domicilio
+  IN_LIBRARY   // préstamo en sala
+}
+
+enum BillingCycle {
+  MONTHLY
+  SEMESTER
+  ANNUAL
+}
+
 model Tenant {
-  id          String       @id @default(uuid())
-  name        String
-  emailDomain String       @unique
-  status      TenantStatus @default(ACTIVE)
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
+  id             String       @id @default(uuid())
+  name           String
+  emailDomain    String       @unique
+  status         TenantStatus @default(ACTIVE)
+  type           TenantType   @default(SCHOOL)
+  finePerDay     Float        @default(5.0)
+  billingCycle   BillingCycle @default(MONTHLY)
+  planExpiresAt  DateTime?
+  lastPaymentId  String?
+  isDeleted      Boolean      @default(false)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
   
   // Relations
-  users User[]
-  books Book[]
-  loans Loan[]
+  users       User[]
+  books       Book[]
+  loans       Loan[]
+  departments Department[]
 }
 
 model User {
@@ -35,12 +64,15 @@ model User {
   cct        String?  // Código único de escuela, opcional
   studentId  String?  // matrícula / número de control
   department String?  
-  barcode    String?  
-  password   String?  // hashed password, optional for students
-  role       String   @default("user")
-  isDeleted  Boolean  @default(false)
-  qrCode     String?  // Código QR de identificación
-  createdAt  DateTime @default(now())
+  barcode      String?  
+  password     String?  // hashed password, optional for students
+  role         String   @default("user")
+  isDeleted    Boolean  @default(false)
+  qrCode       String?  // Código QR de identificación
+  contactEmail String?
+  contactPhone String?
+  gender       Gender?
+  createdAt    DateTime @default(now())
   
   // Relations
   loans Loan[]
@@ -60,12 +92,16 @@ model Book {
   author        String
   isbn          String?
   publisher     String?
-  locationHall  String
-  locationShelf String
+  locationHall  String?
+  locationShelf String?
+  locationRow   String?
+  locationColumn String?
+  storageLocation String?  // Ubicación libre cuando el libro está "en almacén" en vez de en estante (ej. "Bodega 2, caja 5")
   statusPhysical PhysicalStatus @default(GOOD)
   statusLogical LogicalStatus   @default(ACTIVE)
   available     Boolean       @default(true)
   qrCode        String?       // Código QR de identificación del libro
+  replacementCost Float?
   createdAt     DateTime      @default(now())
 
   // Relations
@@ -107,7 +143,30 @@ model Loan {
   status     LoanStatus @default(ACTIVE)
   dueDate    DateTime?
   fineAmount Float      @default(0)
+  lastReminderSentAt DateTime?
+  // Tipo de préstamo (a domicilio o consulta en sala) y el departamento/carrera
+  // que el bibliotecario seleccionó AL MOMENTO de crear este préstamo. departmentId
+  // se guarda como una "foto" histórica: no se actualiza si el alumno cambia de
+  // departamento después, para que los reportes de meses pasados no se alteren.
+  loanType     LoanType    @default(HOME)
+  departmentId String?
+  department   Department? @relation(fields: [departmentId], references: [id])
   createdAt  DateTime   @default(now())
 
+  @@index([tenantId])
+  @@index([departmentId])
+}
+
+model Department {
+  id        String   @id @default(uuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name      String
+  createdAt DateTime @default(now())
+
+  // Relations
+  loans Loan[]
+
+  @@unique([tenantId, name])
   @@index([tenantId])
 }

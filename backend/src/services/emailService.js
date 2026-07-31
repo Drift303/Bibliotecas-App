@@ -52,4 +52,31 @@ const sendTempPasswordEmail = async ({ name, email, tempPassword, credentialImag
   }
 };
 
-module.exports = { sendTempPasswordEmail };
+const sendLoanDueReminderEmail = async ({ name, email, bookTitle, dueDate }) => {
+  try {
+    const mailOptions = {
+      from: `"Biblioteca Inteligente" <${process.env.EMAIL_USER}>`,
+      to: email,
+      subject: 'Recordatorio de Préstamo Vencido',
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 500px; margin: 0 auto; padding: 24px;">
+          <h2 style="color: #1E3A5F;">Hola, ${name}</h2>
+          <p>Te recordamos que tienes un préstamo vencido en la biblioteca.</p>
+          <div style="background: #F7FAFC; border: 1px solid #E5E7EB; border-radius: 8px; padding: 16px; margin: 16px 0;">
+            <p style="margin: 0;"><strong>Libro:</strong> ${bookTitle}</p>
+            <p style="margin: 8px 0 0;"><strong>Fecha de Vencimiento:</strong> ${new Date(dueDate).toLocaleDateString('es-MX')}</p>
+          </div>
+          <p>Por favor, devuelve el libro a la brevedad para evitar multas adicionales.</p>
+        </div>
+      `,
+    };
+
+    const info = await transporter.sendMail(mailOptions);
+    return { success: true, data: info };
+  } catch (err) {
+    console.error('Nodemailer error:', err.message);
+    return { success: false, error: err };
+  }
+};
+
+module.exports = { sendTempPasswordEmail, sendLoanDueReminderEmail };

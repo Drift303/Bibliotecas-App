@@ -20,11 +20,38 @@ const generateTempPassword = () => {
 
 const getTenants = async (req, res) => {
   try {
-    const tenants = await prisma.tenant.findMany({ orderBy: { createdAt: 'desc' } });
+    const tenants = await prisma.tenant.findMany({
+      where: { isDeleted: false },
+      orderBy: { createdAt: 'desc' },
+    });
     res.json({ success: true, data: tenants });
   } catch (err) {
     console.error('getTenants error', err);
     res.status(500).json({ error: 'Failed to fetch tenants' });
+  }
+};
+
+// Borrado suave: el plantel deja de listarse y de poder usarse, pero sus
+// datos (alumnos, libros, préstamos) no se destruyen — a diferencia de un
+// DELETE físico, que por el onDelete: Cascade del schema los borraría
+// para siempre. Así se puede auditar o recuperar si fue un error.
+const deleteTenant = async (req, res) => {
+  try {
+    const { tenantId } = req.params;
+
+    const tenant = await prisma.tenant.findUnique({ where: { id: tenantId } });
+    if (!tenant || tenant.isDeleted) return res.status(404).json({ error: 'Tenant not found' });
+
+    const deleted = await prisma.tenant.update({
+      where: { id: tenantId },
+      data: { isDeleted: true, status: 'SUSPENDED' },
+    });
+
+    console.log(`[AUDIT] superadmin ${req.user.id} eliminó (soft-delete) el tenant ${tenantId} (${tenant.name})`);
+    res.json({ success: true, data: deleted });
+  } catch (err) {
+    console.error('deleteTenant error', err);
+    res.status(500).json({ error: 'Failed to delete tenant' });
   }
 };
 
@@ -33,13 +60,14 @@ const createTenant = async (req, res) => {
     const parsed = createTenantSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ errors: parsed.error.format() });
 
-    const { name, emailDomain } = parsed.data;
+    const { name, emailDomain, type } = parsed.data;
 
     const existing = await prisma.tenant.findUnique({ where: { emailDomain: emailDomain.toLowerCase() } });
     if (existing) return res.status(400).json({ error: 'Ese dominio ya está registrado' });
 
     const created = await prisma.tenant.create({
-      data: { name: name.trim(), emailDomain: emailDomain.toLowerCase() },
+      // Si `type` no viene en el body, Prisma aplica el default SCHOOL del schema.
+      data: { name: name.trim(), emailDomain: emailDomain.toLowerCase(), ...(type ? { type } : {}) },
     });
 
     console.log(`[AUDIT] superadmin ${req.user.id} creó tenant ${created.id} (${created.name})`);
@@ -115,6 +143,51 @@ const createLibrarianForTenant = async (req, res) => {
   }
 };
 
+const getLibrariansForTenant = async (req, res) => {
+  try {
+    const { tenantId } = req.params;
+
+    const tenant = await prisma.tenant.findUnique({ where: { id: tenantId } });
+    if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
+
+    const librarians = await prisma.user.findMany({
+      where: { tenantId, role: 'librarian', isDeleted: false },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true, name: true, email: true, createdAt: true },
+    });
+
+    res.json({ success: true, data: librarians });
+  } catch (err) {
+    console.error('getLibrariansForTenant error', err);
+    res.status(500).json({ error: 'Failed to fetch librarians' });
+  }
+};
+
+const deleteLibrarianFromTenant = async (req, res) => {
+  try {
+    const { tenantId, userId } = req.params;
+
+    const existing = await prisma.user.findUnique({ where: { id: userId } });
+    // Debe existir, pertenecer a ese tenant, y ser bibliotecario —
+    // esta ruta no debe poder borrar alumnos ni otros roles por accidente.
+    if (!existing || existing.tenantId !== tenantId || existing.role !== 'librarian') {
+      return res.status(404).json({ error: 'Bibliotecario no encontrado' });
+    }
+
+    const deleted = await prisma.user.update({
+      where: { id: userId },
+      data: { isDeleted: true },
+    });
+
+    console.log(`[AUDIT] superadmin ${req.user.id} eliminó bibliotecario ${userId} del tenant ${tenantId}`);
+    const { password, ...userWithoutPassword } = deleted;
+    res.json({ success: true, data: userWithoutPassword });
+  } catch (err) {
+    console.error('deleteLibrarianFromTenant error', err);
+    res.status(500).json({ error: 'Failed to delete librarian' });
+  }
+};
+
 const updateTenantStatus = async (req, res) => {
   try {
     const { tenantId } = req.params;
@@ -142,4 +215,41 @@ const updateTenantStatus = async (req, res) => {
   }
 };
 
-module.exports = { getTenants, createTenant, createLibrarianForTenant, updateTenantStatus };
+const getSettings = async (req, res) => {
+  try {
+    const tenantId = req.user && req.user.tenantId;
+    if (!tenantId) return res.status(401).json({ error: 'Missing tenant context' });
+
+    const tenant = await prisma.tenant.findUnique({ where: { id: tenantId } });
+    if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
+
+    res.json({ success: true, data: { finePerDay: tenant.finePerDay } });
+  } catch (err) {
+    console.error('getSettings error', err);
+    res.status(500).json({ error: 'Failed to fetch settings' });
+  }
+};
+
+const updateSettings = async (req, res) => {
+  try {
+    const tenantId = req.user && req.user.tenantId;
+    if (!tenantId) return res.status(401).json({ error: 'Missing tenant context' });
+
+    const { finePerDay } = req.body;
+    if (finePerDay === undefined || typeof finePerDay !== 'number' || finePerDay < 0) {
+      return res.status(400).json({ error: 'Invalid finePerDay' });
+    }
+
+    const updated = await prisma.tenant.update({
+      where: { id: tenantId },
+      data: { finePerDay }
+    });
+
+    res.json({ success: true, data: { finePerDay: updated.finePerDay } });
+  } catch (err) {
+    console.error('updateSettings error', err);
+    res.status(500).json({ error: 'Failed to update settings' });
+  }
+};
+
+module.exports = { getTenants, createTenant, deleteTenant, createLibrarianForTenant, getLibrariansForTenant, deleteLibrarianFromTenant, updateTenantStatus, getSettings, updateSettings };

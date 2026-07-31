@@ -6,6 +6,7 @@ const domainRegex = /^[a-z0-9.-]+\.[a-z]{2,}$/i;
 const createTenantSchema = z.object({
   name: z.string().min(1),
   emailDomain: z.string().regex(domainRegex, 'Formato de dominio inválido'),
+  type: z.enum(['SCHOOL', 'PUBLIC_LIBRARY']).optional(),
 });
 
 const createLibrarianSchema = z.object({
