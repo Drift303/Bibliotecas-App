@@ -1,0 +1,692 @@
+diff --git a/backend/prisma/schema.prisma b/backend/prisma/schema.prisma
+index fc3ec0c..6894af4 100644
+--- a/backend/prisma/schema.prisma
++++ b/backend/prisma/schema.prisma
+@@ -17,6 +17,17 @@ enum TenantType {
+   PUBLIC_LIBRARY
+ }
+ 
++enum Gender {
++  MALE
++  FEMALE
++  OTHER
++}
++
++enum LoanType {
++  HOME         // préstamo a domicilio
++  IN_LIBRARY   // préstamo en sala
++}
++
+ enum BillingCycle {
+   MONTHLY
+   SEMESTER
+@@ -59,6 +70,7 @@ model User {
+   qrCode       String?  // Código QR de identificación
+   contactEmail String?
+   contactPhone String?
++  gender       Gender?
+   createdAt    DateTime @default(now())
+   
+   // Relations
+@@ -131,9 +143,17 @@ model Loan {
+   dueDate    DateTime?
+   fineAmount Float      @default(0)
+   lastReminderSentAt DateTime?
++  // Tipo de préstamo (a domicilio o consulta en sala) y el departamento/carrera
++  // que el bibliotecario seleccionó AL MOMENTO de crear este préstamo. departmentId
++  // se guarda como una "foto" histórica: no se actualiza si el alumno cambia de
++  // departamento después, para que los reportes de meses pasados no se alteren.
++  loanType     LoanType    @default(HOME)
++  departmentId String?
++  department   Department? @relation(fields: [departmentId], references: [id])
+   createdAt  DateTime   @default(now())
+ 
+   @@index([tenantId])
++  @@index([departmentId])
+ }
+ 
+ model Department {
+@@ -143,6 +163,9 @@ model Department {
+   name      String
+   createdAt DateTime @default(now())
+ 
++  // Relations
++  loans Loan[]
++
+   @@unique([tenantId, name])
+   @@index([tenantId])
+ }
+diff --git a/backend/server.js b/backend/server.js
+index 484c4e4..f3eef94 100644
+--- a/backend/server.js
++++ b/backend/server.js
+@@ -15,6 +15,7 @@ const userRoutes = require('./src/routes/userRoutes');
+ const tenantRoutes = require('./src/routes/tenantRoutes');
+ const departmentRoutes = require('./src/routes/departmentRoutes');
+ const billingRoutes = require('./src/routes/billingRoutes');
++const reportRoutes = require('./src/routes/reportRoutes');
+ 
+ const app = express();
+ 
+@@ -60,6 +61,7 @@ app.use('/api/users', userRoutes);
+ app.use('/api/tenants', tenantRoutes);
+ app.use('/api/departments', departmentRoutes);
+ app.use('/api/billing', billingRoutes);
++app.use('/api/reports', reportRoutes);
+ 
+ // global error handler
+ app.use((err, req, res, next) => {
+diff --git a/backend/src/controllers/loanController.js b/backend/src/controllers/loanController.js
+index c088018..be4454a 100644
+--- a/backend/src/controllers/loanController.js
++++ b/backend/src/controllers/loanController.js
+@@ -61,7 +61,7 @@ const createLoan = async (req, res) => {
+     if (!parsed.success) return res.status(400).json({ errors: parsed.error.format() });
+     const tenantId = req.user && req.user.tenantId;
+     if (!tenantId) return res.status(401).json({ error: 'Missing tenant context' });
+-    const { userId, bookId, dueDate } = parsed.data;
++    const { userId, bookId, dueDate, loanType, departmentId } = parsed.data;
+     const [user, book] = await Promise.all([
+       prisma.user.findUnique({ where: { id: userId } }),
+       prisma.book.findUnique({ where: { id: bookId } }),
+@@ -70,12 +70,26 @@ const createLoan = async (req, res) => {
+     if (!book || book.tenantId !== tenantId) return res.status(400).json({ error: 'Book not found in tenant' });
+     if (book.statusLogical === 'DELETED_LOGICAL') return res.status(400).json({ error: 'Book is deleted' });
+     if (!book.available) return res.status(400).json({ error: 'Book not available' });
++
++    // Si viene departmentId, confirmar que pertenece al mismo tenant (evita que
++    // alguien mande el id de un departamento de otra escuela).
++    if (departmentId) {
++      const department = await prisma.department.findUnique({ where: { id: departmentId } });
++      if (!department || department.tenantId !== tenantId) {
++        return res.status(400).json({ error: 'Department not found in tenant' });
++      }
++    }
++
+     const loanData = {
+       tenantId,
+       userId,
+       bookId,
+       status: 'ACTIVE',
+       dueDate: dueDate ? new Date(dueDate) : undefined,
++      loanType: loanType || 'HOME',
++      // Se guarda tal cual lo seleccionó el bibliotecario en ese momento — es
++      // una "foto" histórica, no se vuelve a leer del perfil del alumno después.
++      departmentId: departmentId || undefined,
+     };
+     const [createdLoan, updatedBook] = await prisma.$transaction([
+       prisma.loan.create({
+diff --git a/backend/src/controllers/reportController.js b/backend/src/controllers/reportController.js
+new file mode 100644
+index 0000000..53e5046
+--- /dev/null
++++ b/backend/src/controllers/reportController.js
+@@ -0,0 +1,104 @@
++const prisma = require('../config/prismaClient');
++
++// Devuelve [inicioMes, finMes) en UTC a partir de un string "YYYY-MM".
++// Si no se manda month, usa el mes actual.
++const getMonthRange = (monthParam) => {
++  const now = new Date();
++  let year = now.getUTCFullYear();
++  let month = now.getUTCMonth(); // 0-indexed
++
++  if (monthParam && /^\d{4}-\d{2}$/.test(monthParam)) {
++    const [y, m] = monthParam.split('-').map(Number);
++    year = y;
++    month = m - 1;
++  }
++
++  const start = new Date(Date.UTC(year, month, 1));
++  const end = new Date(Date.UTC(year, month + 1, 1));
++  return { start, end };
++};
++
++// GET /api/reports/loans?month=2026-03
++// Genera la data agregada para el reporte mensual de préstamos: resumen por
++// departamento, cruce por género, y top 10 de libros más prestados (separado
++// por tipo de préstamo). El frontend arma el Excel con esta data (misma
++// librería xlsx que ya usa AnnualCheck.tsx), este endpoint solo agrega.
++const getLoansReport = async (req, res) => {
++  try {
++    const tenantId = req.user && req.user.tenantId;
++    if (!tenantId) return res.status(401).json({ error: 'Missing tenant context' });
++
++    const tenant = await prisma.tenant.findUnique({ where: { id: tenantId } });
++    if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
++
++    const { start, end } = getMonthRange(req.query.month);
++
++    const loans = await prisma.loan.findMany({
++      where: {
++        tenantId,
++        loanDate: { gte: start, lt: end },
++      },
++      include: {
++        user: { select: { id: true, name: true, gender: true } },
++        book: { select: { id: true, title: true } },
++        department: { select: { id: true, name: true } },
++      },
++    });
++
++    // --- Resumen por departamento (o total simple si es biblioteca pública) ---
++    const summaryMap = new Map(); // key: nombre de departamento (o "Total" si no aplica)
++    const genderMap = new Map(); // key: `${departamento}||${genero}`
++    const bookCountHome = new Map(); // key: bookId -> { title, count }
++    const bookCountInLibrary = new Map();
++
++    for (const loan of loans) {
++      const deptName = tenant.type === 'SCHOOL'
++        ? (loan.department ? loan.department.name : 'Sin departamento')
++        : 'Total';
++
++      const isHome = loan.loanType !== 'IN_LIBRARY';
++
++      // Resumen
++      const summary = summaryMap.get(deptName) || { departamento: deptName, prestamos: 0, prestamoEnSala: 0, total: 0 };
++      if (isHome) summary.prestamos += 1; else summary.prestamoEnSala += 1;
++      summary.total += 1;
++      summaryMap.set(deptName, summary);
++
++      // Por género
++      const genderLabel = loan.user.gender === 'MALE' ? 'Hombres' : loan.user.gender === 'FEMALE' ? 'Mujeres' : 'Otro/Sin especificar';
++      const genderKey = `${deptName}||${genderLabel}`;
++      const genderRow = genderMap.get(genderKey) || { departamento: deptName, genero: genderLabel, total: 0 };
++      genderRow.total += 1;
++      genderMap.set(genderKey, genderRow);
++
++      // Libros más prestados, separado por tipo
++      const targetMap = isHome ? bookCountHome : bookCountInLibrary;
++      const bookRow = targetMap.get(loan.bookId) || { titulo: loan.book.title, veces: 0 };
++      bookRow.veces += 1;
++      targetMap.set(loan.bookId, bookRow);
++    }
++
++    const topBooks = (map) =>
++      Array.from(map.values())
++        .sort((a, b) => b.veces - a.veces)
++        .slice(0, 10);
++
++    res.json({
++      success: true,
++      data: {
++        tenantType: tenant.type,
++        month: `${start.getUTCFullYear()}-${String(start.getUTCMonth() + 1).padStart(2, '0')}`,
++        summary: Array.from(summaryMap.values()),
++        byGender: Array.from(genderMap.values()),
++        topBooksHome: topBooks(bookCountHome),
++        topBooksInLibrary: topBooks(bookCountInLibrary),
++        totalLoans: loans.length,
++      },
++    });
++  } catch (err) {
++    console.error('getLoansReport error', err);
++    res.status(500).json({ error: 'Failed to generate loans report' });
++  }
++};
++
++module.exports = { getLoansReport };
+diff --git a/backend/src/controllers/userController.js b/backend/src/controllers/userController.js
+index c930a5f..ecd6933 100644
+--- a/backend/src/controllers/userController.js
++++ b/backend/src/controllers/userController.js
+@@ -92,6 +92,7 @@ const createUser = async (req, res) => {
+       barcode: data.barcode ? data.barcode.trim() : null,
+       contactEmail: data.contactEmail ? data.contactEmail.toLowerCase() : null,
+       contactPhone: data.contactPhone ? data.contactPhone.trim() : null,
++      gender: data.gender || null,
+     };
+ 
+     // Si el bibliotecario no especificó contraseña, se genera una temporal automáticamente.
+@@ -194,6 +195,7 @@ const updateUser = async (req, res) => {
+     }
+     if (data.contactEmail !== undefined) updateData.contactEmail = data.contactEmail ? data.contactEmail.toLowerCase() : null;
+     if (data.contactPhone !== undefined) updateData.contactPhone = data.contactPhone ? data.contactPhone.trim() : null;
++    if (data.gender !== undefined) updateData.gender = data.gender || null;
+     if (data.password) updateData.password = await hashPassword(data.password);
+ 
+     const updated = await prisma.user.update({ where: { id: userId }, data: updateData });
+diff --git a/backend/src/routes/reportRoutes.js b/backend/src/routes/reportRoutes.js
+new file mode 100644
+index 0000000..6956af4
+--- /dev/null
++++ b/backend/src/routes/reportRoutes.js
+@@ -0,0 +1,13 @@
++const express = require('express');
++const router = express.Router();
++const { getLoansReport } = require('../controllers/reportController');
++const authGuard = require('../middlewares/authGuard');
++const saasGuard = require('../middlewares/saasGuard');
++const roleGuard = require('../middlewares/roleGuard');
++
++// Solo personal del plantel puede generar reportes (no los lectores).
++const staffRoles = ['superadmin', 'admin_plantel', 'librarian'];
++
++router.get('/loans', authGuard, saasGuard, roleGuard(staffRoles), getLoansReport);
++
++module.exports = router;
+diff --git a/backend/src/validators/loanValidators.js b/backend/src/validators/loanValidators.js
+index 8c3f1d3..354ae01 100644
+--- a/backend/src/validators/loanValidators.js
++++ b/backend/src/validators/loanValidators.js
+@@ -4,6 +4,12 @@ const createLoanSchema = z.object({
+   userId: z.string().uuid(),
+   bookId: z.string().uuid(),
+   dueDate: z.string().optional(),
++  // Tipo de préstamo: a domicilio o consulta en sala. No afecta el cálculo
++  // de multa ni fecha de vencimiento, es solo para reportes.
++  loanType: z.enum(['HOME', 'IN_LIBRARY']).optional(),
++  // Departamento/carrera seleccionado por el bibliotecario al momento del
++  // préstamo (solo aplica a escuelas; en biblioteca pública no se envía).
++  departmentId: z.string().uuid().optional(),
+ });
+ 
+ const returnLoanSchema = z.object({
+diff --git a/backend/src/validators/userValidators.js b/backend/src/validators/userValidators.js
+index 54457fb..ddaa31a 100644
+--- a/backend/src/validators/userValidators.js
++++ b/backend/src/validators/userValidators.js
+@@ -12,6 +12,7 @@ const createUserSchema = z.object({
+   qrCode: z.string().optional(),
+   contactEmail: z.string().email().optional(),
+   contactPhone: z.string().optional(),
++  gender: z.enum(['MALE', 'FEMALE', 'OTHER']).optional(),
+ });
+ 
+ const updateUserSchema = z.object({
+@@ -25,6 +26,7 @@ const updateUserSchema = z.object({
+   qrCode: z.string().optional(),
+   contactEmail: z.string().email().optional(),
+   contactPhone: z.string().optional(),
++  gender: z.enum(['MALE', 'FEMALE', 'OTHER']).optional(),
+ });
+ 
+ module.exports = { createUserSchema, updateUserSchema };
+diff --git a/src/components/Sidebar.tsx b/src/components/Sidebar.tsx
+index 20f8e13..1afa769 100644
+--- a/src/components/Sidebar.tsx
++++ b/src/components/Sidebar.tsx
+@@ -10,7 +10,8 @@ import {
+   History,
+   ClipboardCheck,
+   Building2,
+-  MapPin
++  MapPin,
++  FileSpreadsheet
+ } from "lucide-react";
+ 
+ // CORREGIDO: Ahora el SVG tiene el path para dibujar el libro físico
+@@ -52,6 +53,7 @@ export default function Sidebar() {
+   }
+ 
+   links.push({ to: "/loans", label: "Historial", icon: History });
++  links.push({ to: "/reports", label: "Reportes", icon: FileSpreadsheet });
+ 
+   return (
+     <aside className={`w-64 h-screen sticky top-0 flex flex-col transition-all duration-300 border-r backdrop-blur-2xl overflow-y-auto ${
+diff --git a/src/librarian/QuickLoan.tsx b/src/librarian/QuickLoan.tsx
+index d396dd1..a213080 100644
+--- a/src/librarian/QuickLoan.tsx
++++ b/src/librarian/QuickLoan.tsx
+@@ -66,19 +66,30 @@ export default function QuickLoan() {
+     bookSearch: "",
+     bookTitle: "",
+     dueDate: "",
++    departmentId: "",
++    loanType: "HOME" as "HOME" | "IN_LIBRARY",
+   });
+ 
++  const [departments, setDepartments] = useState<{ id: string; name: string }[]>([]);
++  const tenantType = localStorage.getItem("tenantType") || "SCHOOL";
++
+   // --- CARGAR ESTUDIANTES Y LIBROS ---
+   useEffect(() => {
+     const loadData = async () => {
+       setLoading(true);
+       try {
+-        const [studentsRes, booksRes, loansRes] = await Promise.all([
++        const [studentsRes, booksRes, loansRes, departmentsRes] = await Promise.all([
+           api.get("/users", { params: { role: "student" } }),
+           api.get("/books"),
+           api.get("/loans"),
++          tenantType === "SCHOOL" ? api.get("/departments") : Promise.resolve({ data: { data: [] } }),
+         ]);
+ 
++        const rawDepartments = departmentsRes.data?.success
++          ? departmentsRes.data.data
++          : departmentsRes.data || [];
++        setDepartments(Array.isArray(rawDepartments) ? rawDepartments : []);
++
+         const rawStudents = studentsRes.data?.success
+           ? studentsRes.data.data
+           : studentsRes.data || [];
+@@ -213,6 +224,8 @@ export default function QuickLoan() {
+         userId: form.userId,
+         bookId: form.bookId,
+         dueDate: form.dueDate,
++        loanType: form.loanType,
++        departmentId: form.departmentId || undefined,
+       });
+ 
+       const newLoan = res.data?.success ? res.data.data : res.data;
+@@ -230,6 +243,8 @@ export default function QuickLoan() {
+         bookSearch: "",
+         bookTitle: "",
+         dueDate: "",
++        departmentId: "",
++        loanType: "HOME",
+       });
+       setStatusMessage("✅ Préstamo registrado correctamente");
+       setStatusType("ok");
+@@ -402,6 +417,50 @@ export default function QuickLoan() {
+           />
+         </div>
+ 
++        {tenantType === "SCHOOL" && (
++          <div className="mt-4">
++            <label className={`block mb-2 text-sm font-medium ${isDark ? "text-slate-300" : "text-gray-700"}`}>
++              🏫 Departamento / Carrera
++            </label>
++            <select
++              value={form.departmentId}
++              onChange={(e) => setForm({ ...form, departmentId: e.target.value })}
++              className={`w-full border p-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#3B82F6] transition-colors ${isDark ? "bg-slate-700 border-slate-600 text-white" : "border-[#E5E7EB] bg-white text-black"}`}
++            >
++              <option value="">Selecciona uno (opcional)</option>
++              {departments.map((dep) => (
++                <option key={dep.id} value={dep.id}>{dep.name}</option>
++              ))}
++            </select>
++          </div>
++        )}
++
++        <div className="mt-4">
++          <label className={`block mb-2 text-sm font-medium ${isDark ? "text-slate-300" : "text-gray-700"}`}>
++            📖 Tipo de préstamo
++          </label>
++          <div className="flex gap-4">
++            <label className={`flex items-center gap-2 ${isDark ? "text-slate-200" : "text-black"}`}>
++              <input
++                type="radio"
++                name="loanType"
++                checked={form.loanType === "HOME"}
++                onChange={() => setForm({ ...form, loanType: "HOME" })}
++              />
++              A domicilio
++            </label>
++            <label className={`flex items-center gap-2 ${isDark ? "text-slate-200" : "text-black"}`}>
++              <input
++                type="radio"
++                name="loanType"
++                checked={form.loanType === "IN_LIBRARY"}
++                onChange={() => setForm({ ...form, loanType: "IN_LIBRARY" })}
++              />
++              En sala
++            </label>
++          </div>
++        </div>
++
+         <div className="flex gap-4 mt-6">
+           <button
+             onClick={handleSubmit}
+diff --git a/src/librarian/Reports.tsx b/src/librarian/Reports.tsx
+new file mode 100644
+index 0000000..3ce18db
+--- /dev/null
++++ b/src/librarian/Reports.tsx
+@@ -0,0 +1,185 @@
++import { useState } from "react";
++import DashboardLayout from "../components/DashboardLayout";
++import { useTheme } from "../context/ThemeContext";
++import api from "../api";
++import { FileSpreadsheet, Download } from "lucide-react";
++import * as XLSX from "xlsx";
++
++interface SummaryRow {
++  departamento: string;
++  prestamos: number;
++  prestamoEnSala: number;
++  total: number;
++}
++
++interface GenderRow {
++  departamento: string;
++  genero: string;
++  total: number;
++}
++
++interface BookRow {
++  titulo: string;
++  veces: number;
++}
++
++interface ReportData {
++  tenantType: "SCHOOL" | "PUBLIC_LIBRARY";
++  month: string;
++  summary: SummaryRow[];
++  byGender: GenderRow[];
++  topBooksHome: BookRow[];
++  topBooksInLibrary: BookRow[];
++  totalLoans: number;
++}
++
++// Mes actual en formato "YYYY-MM", usado como valor por defecto del selector.
++const currentMonth = () => {
++  const now = new Date();
++  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
++};
++
++export default function Reports() {
++  const { isDark } = useTheme();
++  const [month, setMonth] = useState(currentMonth());
++  const [loading, setLoading] = useState(false);
++  const [error, setError] = useState("");
++  const [report, setReport] = useState<ReportData | null>(null);
++
++  const generateReport = async () => {
++    setLoading(true);
++    setError("");
++    try {
++      const res = await api.get("/reports/loans", { params: { month } });
++      const data = res.data?.success ? res.data.data : res.data;
++      setReport(data);
++    } catch (err: any) {
++      setError(
++        err?.response?.data?.error || "No se pudo generar el reporte. Intenta de nuevo."
++      );
++      setReport(null);
++    } finally {
++      setLoading(false);
++    }
++  };
++
++  // Arma el Excel a partir de la data agregada que ya trajo el backend.
++  // Mismo patrón que ya usa AnnualCheck.tsx (XLSX.utils.json_to_sheet + book_append_sheet).
++  const exportToExcel = () => {
++    if (!report) return;
++
++    const wb = XLSX.utils.book_new();
++
++    const wsSummary = XLSX.utils.json_to_sheet(
++      report.summary.map((r) => ({
++        Departamento: r.departamento,
++        Préstamos: r.prestamos,
++        "Préstamo en sala": r.prestamoEnSala,
++        Total: r.total,
++      }))
++    );
++    XLSX.utils.book_append_sheet(wb, wsSummary, "Resumen");
++
++    const wsGender = XLSX.utils.json_to_sheet(
++      report.byGender.map((r) => ({
++        Departamento: r.departamento,
++        Género: r.genero,
++        Total: r.total,
++      }))
++    );
++    XLSX.utils.book_append_sheet(wb, wsGender, "Por género");
++
++    const wsBooksHome = XLSX.utils.json_to_sheet(
++      report.topBooksHome.length
++        ? report.topBooksHome.map((b, i) => ({ "N°": i + 1, Título: b.titulo, "N° de préstamos": b.veces }))
++        : [{ Mensaje: "Sin préstamos a domicilio este mes" }]
++    );
++    XLSX.utils.book_append_sheet(wb, wsBooksHome, "Más prestados (domicilio)");
++
++    const wsBooksSala = XLSX.utils.json_to_sheet(
++      report.topBooksInLibrary.length
++        ? report.topBooksInLibrary.map((b, i) => ({ "N°": i + 1, Título: b.titulo, "N° de préstamos": b.veces }))
++        : [{ Mensaje: "Sin préstamos en sala este mes" }]
++    );
++    XLSX.utils.book_append_sheet(wb, wsBooksSala, "Más prestados (en sala)");
++
++    XLSX.writeFile(wb, `Reporte_Prestamos_${report.month}.xlsx`);
++  };
++
++  return (
++    <DashboardLayout>
++      <div className="p-6 max-w-5xl mx-auto">
++        <h1 className={`text-2xl font-bold mb-1 flex items-center gap-2 ${isDark ? "text-white" : "text-[#1E3A5F]"}`}>
++          <FileSpreadsheet className="w-6 h-6" /> Reporte de Préstamos
++        </h1>
++        <p className={`mb-6 text-sm ${isDark ? "text-slate-400" : "text-gray-500"}`}>
++          Genera un reporte mensual de préstamos con desglose por departamento, género y tipo de préstamo.
++        </p>
++
++        <div className="flex items-end gap-4 mb-6">
++          <div>
++            <label className={`block mb-1 text-sm font-medium ${isDark ? "text-slate-300" : "text-gray-700"}`}>
++              Periodo
++            </label>
++            <input
++              type="month"
++              value={month}
++              onChange={(e) => setMonth(e.target.value)}
++              className={`border p-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3B82F6] transition-colors ${isDark ? "bg-slate-700 border-slate-600 text-white" : "border-[#E5E7EB] bg-white text-black"}`}
++            />
++          </div>
++          <button
++            onClick={generateReport}
++            disabled={loading}
++            className={`px-5 py-2 rounded-xl font-semibold text-white transition-all disabled:opacity-50 ${isDark ? "bg-blue-600 hover:bg-blue-700" : "bg-[#1E3A5F] hover:bg-[#3B82F6]"}`}
++          >
++            {loading ? "Generando..." : "Generar reporte"}
++          </button>
++        </div>
++
++        {error && (
++          <div className={`mb-4 p-3 rounded-lg border ${isDark ? "bg-red-900 border-red-700 text-red-200" : "bg-red-50 border-red-200 text-red-700"}`}>
++            {error}
++          </div>
++        )}
++
++        {report && (
++          <div className={`p-5 rounded-xl border ${isDark ? "bg-slate-800 border-slate-700" : "bg-white border-[#E5E7EB]"}`}>
++            <div className="flex items-center justify-between mb-4">
++              <p className={`font-semibold ${isDark ? "text-white" : "text-[#1E3A5F]"}`}>
++                {report.totalLoans} préstamos encontrados en {report.month}
++              </p>
++              <button
++                onClick={exportToExcel}
++                className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-white transition-all ${isDark ? "bg-green-700 hover:bg-green-800" : "bg-green-600 hover:bg-green-700"}`}
++              >
++                <Download className="w-4 h-4" /> Exportar a Excel
++              </button>
++            </div>
++
++            <table className="w-full text-sm">
++              <thead>
++                <tr className={isDark ? "text-slate-400" : "text-gray-500"}>
++                  <th className="text-left py-2">Departamento</th>
++                  <th className="text-left py-2">Préstamos</th>
++                  <th className="text-left py-2">Préstamo en sala</th>
++                  <th className="text-left py-2">Total</th>
++                </tr>
++              </thead>
++              <tbody>
++                {report.summary.map((row) => (
++                  <tr key={row.departamento} className={isDark ? "text-slate-200 border-t border-slate-700" : "text-black border-t border-[#E5E7EB]"}>
++                    <td className="py-2">{row.departamento}</td>
++                    <td className="py-2">{row.prestamos}</td>
++                    <td className="py-2">{row.prestamoEnSala}</td>
++                    <td className="py-2">{row.total}</td>
++                  </tr>
++                ))}
++              </tbody>
++            </table>
++          </div>
++        )}
++      </div>
++    </DashboardLayout>
++  );
++}
+diff --git a/src/librarian/Students.tsx b/src/librarian/Students.tsx
+index 8e160c2..5108530 100644
+--- a/src/librarian/Students.tsx
++++ b/src/librarian/Students.tsx
+@@ -48,6 +48,7 @@ export default function Students() {
+     department: "",
+     contactEmail: "",
+     contactPhone: "",
++    gender: "",
+     role: "student",
+   });
+ 
+@@ -118,6 +119,7 @@ export default function Students() {
+       department: student.department || "",
+       contactEmail: (student as any).contactEmail || "",
+       contactPhone: (student as any).contactPhone || "",
++      gender: (student as any).gender || "",
+       role: student.role,
+     });
+     setShowForm(true);
+@@ -165,6 +167,7 @@ export default function Students() {
+       barcode: tenantType === "SCHOOL" ? formData.studentId : undefined,
+       contactEmail: tenantType === "PUBLIC_LIBRARY" && formData.contactEmail ? formData.contactEmail : undefined,
+       contactPhone: tenantType === "PUBLIC_LIBRARY" && formData.contactPhone ? formData.contactPhone : undefined,
++      gender: formData.gender || undefined,
+       role: "student",
+       credentialImage: credentialImage || undefined,
+     });
+@@ -433,6 +436,21 @@ export default function Students() {
+               </select>
+             )}
+ 
++            <select
++              value={formData.gender}
++              onChange={(e) => setFormData({ ...formData, gender: e.target.value })}
++              className={`px-4 py-2 rounded-lg border transition-colors ${
++                isDark
++                  ? "bg-slate-800 border-slate-600 text-white focus:border-blue-500 focus:outline-none"
++                  : "bg-white border-slate-200 text-slate-900 focus:border-blue-500 focus:outline-none"
++              }`}
++            >
++              <option value="">Género (opcional)</option>
++              <option value="MALE">Hombre</option>
++              <option value="FEMALE">Mujer</option>
++              <option value="OTHER">Otro</option>
++            </select>
++
+             {tenantType === "PUBLIC_LIBRARY" && (
+               <>
+                 <input
+diff --git a/src/routes/routes.tsx b/src/routes/routes.tsx
+index dad2a98..8e6a7a7 100644
+--- a/src/routes/routes.tsx
++++ b/src/routes/routes.tsx
+@@ -14,6 +14,7 @@ import Schools from "../superadmin/Schools";
+ import AnnualCheck from "../librarian/AnnualCheck";
+ import Departments from "../librarian/Departments";
+ import MapLocation from "../librarian/MapLocation";
++import Reports from "../librarian/Reports";
+ 
+ export default function AppRoutes() {
+   return (
+@@ -34,6 +35,7 @@ export default function AppRoutes() {
+         <Route path="/loans" element={<ProtectedRoute><Loans /></ProtectedRoute>} />
+         <Route path="/annual-inventory" element={<ProtectedRoute><AnnualCheck /></ProtectedRoute>} />
+         <Route path="/map-location" element={<ProtectedRoute><MapLocation /></ProtectedRoute>} />
++        <Route path="/reports" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
+         <Route path="*" element={<NotFound />} /> 
+       </Routes>
+     </BrowserRouter>

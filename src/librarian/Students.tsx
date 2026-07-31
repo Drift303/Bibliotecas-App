@@ -48,6 +48,7 @@ export default function Students() {
     department: "",
     contactEmail: "",
     contactPhone: "",
+    gender: "",
     role: "student",
   });
 
@@ -118,6 +119,7 @@ export default function Students() {
       department: student.department || "",
       contactEmail: (student as any).contactEmail || "",
       contactPhone: (student as any).contactPhone || "",
+      gender: (student as any).gender || "",
       role: student.role,
     });
     setShowForm(true);
@@ -165,6 +167,7 @@ export default function Students() {
       barcode: tenantType === "SCHOOL" ? formData.studentId : undefined,
       contactEmail: tenantType === "PUBLIC_LIBRARY" && formData.contactEmail ? formData.contactEmail : undefined,
       contactPhone: tenantType === "PUBLIC_LIBRARY" && formData.contactPhone ? formData.contactPhone : undefined,
+      gender: formData.gender || undefined,
       role: "student",
       credentialImage: credentialImage || undefined,
     });
@@ -432,6 +435,21 @@ export default function Students() {
                 ))}
               </select>
             )}
+
+            <select
+              value={formData.gender}
+              onChange={(e) => setFormData({ ...formData, gender: e.target.value })}
+              className={`px-4 py-2 rounded-lg border transition-colors ${
+                isDark
+                  ? "bg-slate-800 border-slate-600 text-white focus:border-blue-500 focus:outline-none"
+                  : "bg-white border-slate-200 text-slate-900 focus:border-blue-500 focus:outline-none"
+              }`}
+            >
+              <option value="">Género (opcional)</option>
+              <option value="MALE">Hombre</option>
+              <option value="FEMALE">Mujer</option>
+              <option value="OTHER">Otro</option>
+            </select>
 
             {tenantType === "PUBLIC_LIBRARY" && (
               <>

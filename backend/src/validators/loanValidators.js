@@ -4,6 +4,12 @@ const createLoanSchema = z.object({
   userId: z.string().uuid(),
   bookId: z.string().uuid(),
   dueDate: z.string().optional(),
+  // Tipo de préstamo: a domicilio o consulta en sala. No afecta el cálculo
+  // de multa ni fecha de vencimiento, es solo para reportes.
+  loanType: z.enum(['HOME', 'IN_LIBRARY']).optional(),
+  // Departamento/carrera seleccionado por el bibliotecario al momento del
+  // préstamo (solo aplica a escuelas; en biblioteca pública no se envía).
+  departmentId: z.string().uuid().optional(),
 });
 
 const returnLoanSchema = z.object({

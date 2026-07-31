@@ -17,6 +17,17 @@ enum TenantType {
   PUBLIC_LIBRARY
 }
 
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+}
+
+enum LoanType {
+  HOME         // préstamo a domicilio
+  IN_LIBRARY   // préstamo en sala
+}
+
 enum BillingCycle {
   MONTHLY
   SEMESTER
@@ -59,6 +70,7 @@ model User {
   qrCode       String?  // Código QR de identificación
   contactEmail String?
   contactPhone String?
+  gender       Gender?
   createdAt    DateTime @default(now())
   
   // Relations
@@ -131,9 +143,17 @@ model Loan {
   dueDate    DateTime?
   fineAmount Float      @default(0)
   lastReminderSentAt DateTime?
+  // Tipo de préstamo (a domicilio o consulta en sala) y el departamento/carrera
+  // que el bibliotecario seleccionó AL MOMENTO de crear este préstamo. departmentId
+  // se guarda como una "foto" histórica: no se actualiza si el alumno cambia de
+  // departamento después, para que los reportes de meses pasados no se alteren.
+  loanType     LoanType    @default(HOME)
+  departmentId String?
+  department   Department? @relation(fields: [departmentId], references: [id])
   createdAt  DateTime   @default(now())
 
   @@index([tenantId])
+  @@index([departmentId])
 }
 
 model Department {
@@ -142,6 +162,9 @@ model Department {
   tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   name      String
   createdAt DateTime @default(now())
+
+  // Relations
+  loans Loan[]
 
   @@unique([tenantId, name])
   @@index([tenantId])

@@ -12,6 +12,7 @@ const createUserSchema = z.object({
   qrCode: z.string().optional(),
   contactEmail: z.string().email().optional(),
   contactPhone: z.string().optional(),
+  gender: z.enum(['MALE', 'FEMALE', 'OTHER']).optional(),
 });
 
 const updateUserSchema = z.object({
@@ -25,6 +26,7 @@ const updateUserSchema = z.object({
   qrCode: z.string().optional(),
   contactEmail: z.string().email().optional(),
   contactPhone: z.string().optional(),
+  gender: z.enum(['MALE', 'FEMALE', 'OTHER']).optional(),
 });
 
 module.exports = { createUserSchema, updateUserSchema };

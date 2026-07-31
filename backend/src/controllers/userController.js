@@ -92,6 +92,7 @@ const createUser = async (req, res) => {
       barcode: data.barcode ? data.barcode.trim() : null,
       contactEmail: data.contactEmail ? data.contactEmail.toLowerCase() : null,
       contactPhone: data.contactPhone ? data.contactPhone.trim() : null,
+      gender: data.gender || null,
     };
 
     // Si el bibliotecario no especificó contraseña, se genera una temporal automáticamente.
@@ -194,6 +195,7 @@ const updateUser = async (req, res) => {
     }
     if (data.contactEmail !== undefined) updateData.contactEmail = data.contactEmail ? data.contactEmail.toLowerCase() : null;
     if (data.contactPhone !== undefined) updateData.contactPhone = data.contactPhone ? data.contactPhone.trim() : null;
+    if (data.gender !== undefined) updateData.gender = data.gender || null;
     if (data.password) updateData.password = await hashPassword(data.password);
 
     const updated = await prisma.user.update({ where: { id: userId }, data: updateData });

@@ -61,7 +61,7 @@ const createLoan = async (req, res) => {
     if (!parsed.success) return res.status(400).json({ errors: parsed.error.format() });
     const tenantId = req.user && req.user.tenantId;
     if (!tenantId) return res.status(401).json({ error: 'Missing tenant context' });
-    const { userId, bookId, dueDate } = parsed.data;
+    const { userId, bookId, dueDate, loanType, departmentId } = parsed.data;
     const [user, book] = await Promise.all([
       prisma.user.findUnique({ where: { id: userId } }),
       prisma.book.findUnique({ where: { id: bookId } }),
@@ -70,12 +70,26 @@ const createLoan = async (req, res) => {
     if (!book || book.tenantId !== tenantId) return res.status(400).json({ error: 'Book not found in tenant' });
     if (book.statusLogical === 'DELETED_LOGICAL') return res.status(400).json({ error: 'Book is deleted' });
     if (!book.available) return res.status(400).json({ error: 'Book not available' });
+
+    // Si viene departmentId, confirmar que pertenece al mismo tenant (evita que
+    // alguien mande el id de un departamento de otra escuela).
+    if (departmentId) {
+      const department = await prisma.department.findUnique({ where: { id: departmentId } });
+      if (!department || department.tenantId !== tenantId) {
+        return res.status(400).json({ error: 'Department not found in tenant' });
+      }
+    }
+
     const loanData = {
       tenantId,
       userId,
       bookId,
       status: 'ACTIVE',
       dueDate: dueDate ? new Date(dueDate) : undefined,
+      loanType: loanType || 'HOME',
+      // Se guarda tal cual lo seleccionó el bibliotecario en ese momento — es
+      // una "foto" histórica, no se vuelve a leer del perfil del alumno después.
+      departmentId: departmentId || undefined,
     };
     const [createdLoan, updatedBook] = await prisma.$transaction([
       prisma.loan.create({

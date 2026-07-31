@@ -10,7 +10,8 @@ import {
   History,
   ClipboardCheck,
   Building2,
-  MapPin
+  MapPin,
+  FileSpreadsheet
 } from "lucide-react";
 
 // CORREGIDO: Ahora el SVG tiene el path para dibujar el libro físico
@@ -52,6 +53,7 @@ export default function Sidebar() {
   }
 
   links.push({ to: "/loans", label: "Historial", icon: History });
+  links.push({ to: "/reports", label: "Reportes", icon: FileSpreadsheet });
 
   return (
     <aside className={`w-64 h-screen sticky top-0 flex flex-col transition-all duration-300 border-r backdrop-blur-2xl overflow-y-auto ${
