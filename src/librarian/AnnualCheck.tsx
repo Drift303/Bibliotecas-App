@@ -56,6 +56,8 @@ export default function AnnualCheck() {
     title: "",
     author: "",
     status: "Disponible",
+    locationHall: "" as string | null,
+    locationShelf: "" as string | null,
   });
   const [newBookError, setNewBookError] = useState("");
   const [savingNewBook, setSavingNewBook] = useState(false);
@@ -135,8 +137,13 @@ export default function AnnualCheck() {
         status: newBookFormData.status === "Disponible" ? "AVAILABLE" : "LOANED",
         statusPhysical: "GOOD",
         statusLogical: "ACTIVE",
-        locationHall: "General",
-        locationShelf: "A1",
+        // Antes se rellenaba con "General"/"A1" aunque el bibliotecario no
+        // capturara nada, lo cual rompía el filtro "Sin ubicación asignada"
+        // en Inventario (el libro parecía tener ubicación real sin tenerla).
+        // Ahora: null por defecto, y solo se manda el valor si de verdad se
+        // llenó la sección opcional "¿Dónde está ubicado?" del formulario.
+        locationHall: newBookFormData.locationHall?.trim() || null,
+        locationShelf: newBookFormData.locationShelf?.trim() || null,
       };
       
       const res = await api.post("/books", payload);
@@ -170,6 +177,14 @@ export default function AnnualCheck() {
       setShowAddBookModal(false);
       setUnknownBarcode("");
       setSearch("");
+      setNewBookFormData({
+        isbn: "",
+        title: "",
+        author: "",
+        status: "Disponible",
+        locationHall: "",
+        locationShelf: "",
+      });
     } catch (err) {
       console.error("Error creando nuevo libro", err);
       setNewBookError("Hubo un problema registrando el libro. Intenta nuevamente.");

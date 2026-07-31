@@ -8,6 +8,7 @@ import {
   X,
   MapPin,
   BookMarked,
+  Package,
   } from "lucide-react";
 
 type AvailabilityFilter = "todos" | "disponibles" | "prestados";
@@ -22,6 +23,7 @@ interface Book {
   publisher: string | null;
   locationHall: string;
   locationShelf: string;
+  storageLocation: string | null;
   available: boolean;
   status: "Disponible" | "Prestado";
   statusPhysical: PhysicalStatus;
@@ -327,6 +329,7 @@ function mapBook(book: any): Book {
     publisher: book.publisher || null,
     locationHall: book.locationHall || "Sin especificar",
     locationShelf: book.locationShelf || "Sin especificar",
+    storageLocation: book.storageLocation || null,
     available,
     status: available ? "Disponible" : "Prestado",
     statusPhysical: normalizePhysicalStatus(book.statusPhysical),
@@ -438,15 +441,29 @@ function BookDetailModal({ book, onClose }: { book: Book; onClose: () => void })
                 Ubicación física
             </p>
 
-          <div className="flex justify-between">
-            <span>Pasillo</span>
-            <span className="font-bold">{book.locationHall}</span>
-          </div>
+          {book.storageLocation ? (
+            // En bodega: al alumno solo le decimos "Bodega", sin el detalle
+            // interno (caja, anaquel, etc.) que solo le sirve al bibliotecario
+            // para ir a buscarlo. Si el alumno lo necesita, debe pedirlo en
+            // el mostrador.
+            <div className="flex items-center gap-2">
+              <Package className="w-4 h-4 text-slate-500" />
+              <span className="font-bold">Bodega</span>
+              <span className="text-xs text-slate-500 dark:text-slate-400">(pídelo en el mostrador)</span>
+            </div>
+          ) : (
+            <>
+              <div className="flex justify-between">
+                <span>Pasillo</span>
+                <span className="font-bold">{book.locationHall}</span>
+              </div>
 
-          <div className="mt-2 flex justify-between">
-            <span>Estante</span>
-            <span className="font-bold">{book.locationShelf}</span>
-          </div>
+              <div className="mt-2 flex justify-between">
+                <span>Estante</span>
+                <span className="font-bold">{book.locationShelf}</span>
+              </div>
+            </>
+          )}
         </div>
 
           <div className="flex flex-wrap gap-2 pt-2">

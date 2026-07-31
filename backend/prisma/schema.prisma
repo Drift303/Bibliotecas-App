@@ -17,15 +17,24 @@ enum TenantType {
   PUBLIC_LIBRARY
 }
 
+enum BillingCycle {
+  MONTHLY
+  SEMESTER
+  ANNUAL
+}
+
 model Tenant {
-  id          String       @id @default(uuid())
-  name        String
-  emailDomain String       @unique
-  status      TenantStatus @default(ACTIVE)
-  type        TenantType   @default(SCHOOL)
-  finePerDay  Float        @default(5.0)
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
+  id             String       @id @default(uuid())
+  name           String
+  emailDomain    String       @unique
+  status         TenantStatus @default(ACTIVE)
+  type           TenantType   @default(SCHOOL)
+  finePerDay     Float        @default(5.0)
+  billingCycle   BillingCycle @default(MONTHLY)
+  planExpiresAt  DateTime?
+  lastPaymentId  String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
   
   // Relations
   users       User[]
@@ -70,8 +79,11 @@ model Book {
   author        String
   isbn          String?
   publisher     String?
-  locationHall  String
-  locationShelf String
+  locationHall  String?
+  locationShelf String?
+  locationRow   String?
+  locationColumn String?
+  storageLocation String?  // Ubicación libre cuando el libro está "en almacén" en vez de en estante (ej. "Bodega 2, caja 5")
   statusPhysical PhysicalStatus @default(GOOD)
   statusLogical LogicalStatus   @default(ACTIVE)
   available     Boolean       @default(true)

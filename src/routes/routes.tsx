@@ -13,6 +13,7 @@ import Billing from "../superadmin/Billing";
 import Schools from "../superadmin/Schools";
 import AnnualCheck from "../librarian/AnnualCheck";
 import Departments from "../librarian/Departments";
+import MapLocation from "../librarian/MapLocation";
 
 export default function AppRoutes() {
   return (
@@ -32,6 +33,7 @@ export default function AppRoutes() {
         <Route path="/billing" element={<ProtectedRoute><Billing /></ProtectedRoute>} />
         <Route path="/loans" element={<ProtectedRoute><Loans /></ProtectedRoute>} />
         <Route path="/annual-inventory" element={<ProtectedRoute><AnnualCheck /></ProtectedRoute>} />
+        <Route path="/map-location" element={<ProtectedRoute><MapLocation /></ProtectedRoute>} />
         <Route path="*" element={<NotFound />} /> 
       </Routes>
     </BrowserRouter>

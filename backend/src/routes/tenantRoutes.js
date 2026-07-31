@@ -7,6 +7,8 @@ const {
   getTenants,
   createTenant,
   createLibrarianForTenant,
+  getLibrariansForTenant,
+  deleteLibrarianFromTenant,
   updateTenantStatus,
   getSettings,
   updateSettings
@@ -16,6 +18,8 @@ const {
 router.get('/', authGuard, roleGuard(['superadmin']), getTenants);
 router.post('/', authGuard, roleGuard(['superadmin']), createTenant);
 router.post('/:tenantId/librarian', authGuard, roleGuard(['superadmin']), createLibrarianForTenant);
+router.get('/:tenantId/librarian', authGuard, roleGuard(['superadmin']), getLibrariansForTenant);
+router.delete('/:tenantId/librarian/:userId', authGuard, roleGuard(['superadmin']), deleteLibrarianFromTenant);
 router.patch('/:tenantId/status', authGuard, roleGuard(['superadmin']), updateTenantStatus);
 
 // Rutas de configuración del tenant (Bibliotecarios y Admins)

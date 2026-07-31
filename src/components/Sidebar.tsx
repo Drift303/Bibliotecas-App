@@ -9,7 +9,8 @@ import {
   Users, 
   History,
   ClipboardCheck,
-  Building2
+  Building2,
+  MapPin
 } from "lucide-react";
 
 // CORREGIDO: Ahora el SVG tiene el path para dibujar el libro físico
@@ -41,6 +42,7 @@ export default function Sidebar() {
     { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
     { to: "/inventory", label: "Inventario", icon: Package },
     { to: "/annual-inventory", label: "Auditoría Anual", icon: ClipboardCheck },
+    { to: "/map-location", label: "Mapear Ubicación", icon: MapPin },
     { to: "/quick-loan", label: "Préstamo Rápido", icon: UserCheck },
     { to: "/students", label: "Alumnos", icon: Users },
   ];

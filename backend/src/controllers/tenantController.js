@@ -116,6 +116,51 @@ const createLibrarianForTenant = async (req, res) => {
   }
 };
 
+const getLibrariansForTenant = async (req, res) => {
+  try {
+    const { tenantId } = req.params;
+
+    const tenant = await prisma.tenant.findUnique({ where: { id: tenantId } });
+    if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
+
+    const librarians = await prisma.user.findMany({
+      where: { tenantId, role: 'librarian', isDeleted: false },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true, name: true, email: true, createdAt: true },
+    });
+
+    res.json({ success: true, data: librarians });
+  } catch (err) {
+    console.error('getLibrariansForTenant error', err);
+    res.status(500).json({ error: 'Failed to fetch librarians' });
+  }
+};
+
+const deleteLibrarianFromTenant = async (req, res) => {
+  try {
+    const { tenantId, userId } = req.params;
+
+    const existing = await prisma.user.findUnique({ where: { id: userId } });
+    // Debe existir, pertenecer a ese tenant, y ser bibliotecario —
+    // esta ruta no debe poder borrar alumnos ni otros roles por accidente.
+    if (!existing || existing.tenantId !== tenantId || existing.role !== 'librarian') {
+      return res.status(404).json({ error: 'Bibliotecario no encontrado' });
+    }
+
+    const deleted = await prisma.user.update({
+      where: { id: userId },
+      data: { isDeleted: true },
+    });
+
+    console.log(`[AUDIT] superadmin ${req.user.id} eliminó bibliotecario ${userId} del tenant ${tenantId}`);
+    const { password, ...userWithoutPassword } = deleted;
+    res.json({ success: true, data: userWithoutPassword });
+  } catch (err) {
+    console.error('deleteLibrarianFromTenant error', err);
+    res.status(500).json({ error: 'Failed to delete librarian' });
+  }
+};
+
 const updateTenantStatus = async (req, res) => {
   try {
     const { tenantId } = req.params;
@@ -180,4 +225,4 @@ const updateSettings = async (req, res) => {
   }
 };
 
-module.exports = { getTenants, createTenant, createLibrarianForTenant, updateTenantStatus, getSettings, updateSettings };
+module.exports = { getTenants, createTenant, createLibrarianForTenant, getLibrariansForTenant, deleteLibrarianFromTenant, updateTenantStatus, getSettings, updateSettings };

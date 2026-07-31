@@ -9,6 +9,8 @@ interface Book {
   title: string;
   author: string;
   status: string;
+  locationHall?: string | null;
+  locationShelf?: string | null;
 }
 
 export interface ColumnMapping {
@@ -48,6 +50,8 @@ export function useBookInventory() {
     title: "",
     author: "",
     status: "Disponible",
+    locationHall: "" as string | null,
+    locationShelf: "" as string | null,
   });
 
   const [showScanner, setShowScanner] = useState(false);
@@ -136,6 +140,8 @@ export function useBookInventory() {
             : b.available === true
             ? "Disponible"
             : "Prestado",
+        locationHall: b.locationHall ?? null,
+        locationShelf: b.locationShelf ?? null,
       }));
 
       setBooks(normalizedBooks);
@@ -165,7 +171,7 @@ export function useBookInventory() {
   const handleAddBook = () => {
     setEditingBookId(null);
     setActionError("");
-    setFormData({ isbn: "", title: "", author: "", status: "Disponible" });
+    setFormData({ isbn: "", title: "", author: "", status: "Disponible", locationHall: "", locationShelf: "" });
     setShowForm(true);
   };
 
@@ -180,6 +186,8 @@ export function useBookInventory() {
       title: book.title,
       author: book.author,
       status: book.status,
+      locationHall: book.locationHall || "",
+      locationShelf: book.locationShelf || "",
     });
     setShowForm(true);
   };
@@ -221,8 +229,8 @@ export function useBookInventory() {
           : formData.status === "Prestado"
           ? "BORROWED"
           : "ACTIVE",
-      locationHall: "General",
-      locationShelf: "A1",
+      locationHall: formData.locationHall?.trim() || null,
+      locationShelf: formData.locationShelf?.trim() || null,
     };
 
     try {
@@ -395,8 +403,8 @@ export function useBookInventory() {
           available: isAvailable,
           statusPhysical: "GOOD",
           statusLogical: "ACTIVE",
-          locationHall: "General",
-          locationShelf: "A1",
+          locationHall: null,
+          locationShelf: null,
         };
 
         const dupByIsbn = (dbPayload.isbn !== "S/N") ? existingIsbns.get(dbPayload.isbn.toLowerCase()) : null;
