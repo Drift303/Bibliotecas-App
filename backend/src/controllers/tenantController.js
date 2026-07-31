@@ -20,11 +20,38 @@ const generateTempPassword = () => {
 
 const getTenants = async (req, res) => {
   try {
-    const tenants = await prisma.tenant.findMany({ orderBy: { createdAt: 'desc' } });
+    const tenants = await prisma.tenant.findMany({
+      where: { isDeleted: false },
+      orderBy: { createdAt: 'desc' },
+    });
     res.json({ success: true, data: tenants });
   } catch (err) {
     console.error('getTenants error', err);
     res.status(500).json({ error: 'Failed to fetch tenants' });
+  }
+};
+
+// Borrado suave: el plantel deja de listarse y de poder usarse, pero sus
+// datos (alumnos, libros, préstamos) no se destruyen — a diferencia de un
+// DELETE físico, que por el onDelete: Cascade del schema los borraría
+// para siempre. Así se puede auditar o recuperar si fue un error.
+const deleteTenant = async (req, res) => {
+  try {
+    const { tenantId } = req.params;
+
+    const tenant = await prisma.tenant.findUnique({ where: { id: tenantId } });
+    if (!tenant || tenant.isDeleted) return res.status(404).json({ error: 'Tenant not found' });
+
+    const deleted = await prisma.tenant.update({
+      where: { id: tenantId },
+      data: { isDeleted: true, status: 'SUSPENDED' },
+    });
+
+    console.log(`[AUDIT] superadmin ${req.user.id} eliminó (soft-delete) el tenant ${tenantId} (${tenant.name})`);
+    res.json({ success: true, data: deleted });
+  } catch (err) {
+    console.error('deleteTenant error', err);
+    res.status(500).json({ error: 'Failed to delete tenant' });
   }
 };
 
@@ -225,4 +252,4 @@ const updateSettings = async (req, res) => {
   }
 };
 
-module.exports = { getTenants, createTenant, createLibrarianForTenant, getLibrariansForTenant, deleteLibrarianFromTenant, updateTenantStatus, getSettings, updateSettings };
+module.exports = { getTenants, createTenant, deleteTenant, createLibrarianForTenant, getLibrariansForTenant, deleteLibrarianFromTenant, updateTenantStatus, getSettings, updateSettings };

@@ -63,6 +63,10 @@ export default function Schools() {
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [showRules, setShowRules] = useState(false);
 
+  const [deleteTargetSchool, setDeleteTargetSchool] = useState<School | null>(null);
+  const [deletingSchool, setDeletingSchool] = useState(false);
+  const [deleteSchoolError, setDeleteSchoolError] = useState("");
+
   const loadSchools = async () => {
     setLoading(true);
     try {
@@ -257,6 +261,21 @@ export default function Schools() {
     }
   };
 
+  const handleDeleteSchool = async () => {
+    if (!deleteTargetSchool) return;
+    setDeletingSchool(true);
+    setDeleteSchoolError("");
+    try {
+      await api.delete(`/tenants/${deleteTargetSchool.id}`);
+      setDeleteTargetSchool(null);
+      await loadSchools();
+    } catch (err: any) {
+      setDeleteSchoolError(err?.response?.data?.error || "No se pudo eliminar el plantel.");
+    } finally {
+      setDeletingSchool(false);
+    }
+  };
+
   const handleToggleStatus = async (school: School) => {
     const nextStatus = school.status === "ACTIVE" ? "SUSPENDED" : "ACTIVE";
     setTogglingId(school.id);
@@ -448,6 +467,21 @@ export default function Schools() {
                           className={`${flatButton} ${isOwn ? "opacity-40 cursor-not-allowed" : ""}`}
                         >
                           {togglingId === school.id ? "..." : isActive ? "Suspender" : "Activar"}
+                        </button>
+                        <button
+                          onClick={() => {
+                            setDeleteTargetSchool(school);
+                            setDeleteSchoolError("");
+                          }}
+                          disabled={isOwn}
+                          title={isOwn ? "No puedes eliminar tu propio plantel" : "Eliminar plantel"}
+                          className={`p-1.5 rounded-md transition-colors ${
+                            isOwn
+                              ? "opacity-40 cursor-not-allowed text-[#8E8E93]"
+                              : `${textSecondary} hover:text-[#FF3B30] ${isDark ? "hover:bg-[#3A3A3C]" : "hover:bg-[#F0F0F2]"}`
+                          }`}
+                        >
+                          <Trash2 size={16} />
                         </button>
                       </div>
                     </td>
@@ -657,6 +691,45 @@ export default function Schools() {
             <div className="flex gap-2 mt-5">
               <button onClick={() => setManageSchoolId(null)} className={flatButton}>
                 Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: confirmar eliminación de plantel — pide escribir el nombre porque es destructivo */}
+      {deleteTargetSchool && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-6 z-50">
+          <div className={`rounded-lg w-full max-w-sm p-5 border ${surface} ${border}`}>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-base font-semibold text-[#FF3B30]">Eliminar plantel</h2>
+              <button onClick={() => setDeleteTargetSchool(null)} className={textSecondary}>
+                <X size={18} />
+              </button>
+            </div>
+
+            <p className={`text-sm mb-3 ${textSecondary}`}>
+              Vas a eliminar <span className={textPrimary}>{deleteTargetSchool.name}</span>. Sus datos
+              (alumnos, bibliotecarios, libros, préstamos) no se borran físicamente, pero el plantel deja
+              de aparecer y de poder usarse. Esta acción no se puede deshacer desde la interfaz.
+            </p>
+
+            {deleteSchoolError && (
+              <p className="text-sm text-[#FF3B30] mb-3 flex items-center gap-1.5">
+                <AlertCircle size={14} /> {deleteSchoolError}
+              </p>
+            )}
+
+            <div className="flex gap-2 mt-2">
+              <button
+                onClick={handleDeleteSchool}
+                disabled={deletingSchool}
+                className="px-3.5 py-1.5 rounded-md text-sm font-medium border border-[#FF3B30] text-[#FF3B30] hover:bg-[#FF3B30]/10 transition-colors"
+              >
+                {deletingSchool ? "Eliminando..." : "Sí, eliminar"}
+              </button>
+              <button onClick={() => setDeleteTargetSchool(null)} className={flatButton}>
+                Cancelar
               </button>
             </div>
           </div>

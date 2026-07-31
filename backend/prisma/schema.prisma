@@ -44,6 +44,7 @@ model Tenant {
   billingCycle   BillingCycle @default(MONTHLY)
   planExpiresAt  DateTime?
   lastPaymentId  String?
+  isDeleted      Boolean      @default(false)
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
   

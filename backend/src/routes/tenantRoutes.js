@@ -6,6 +6,7 @@ const saasGuard = require('../middlewares/saasGuard');
 const {
   getTenants,
   createTenant,
+  deleteTenant,
   createLibrarianForTenant,
   getLibrariansForTenant,
   deleteLibrarianFromTenant,
@@ -17,6 +18,7 @@ const {
 // Rutas exclusivas de superadmin
 router.get('/', authGuard, roleGuard(['superadmin']), getTenants);
 router.post('/', authGuard, roleGuard(['superadmin']), createTenant);
+router.delete('/:tenantId', authGuard, roleGuard(['superadmin']), deleteTenant);
 router.post('/:tenantId/librarian', authGuard, roleGuard(['superadmin']), createLibrarianForTenant);
 router.get('/:tenantId/librarian', authGuard, roleGuard(['superadmin']), getLibrariansForTenant);
 router.delete('/:tenantId/librarian/:userId', authGuard, roleGuard(['superadmin']), deleteLibrarianFromTenant);
