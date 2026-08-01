@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
+import { Camera } from "lucide-react";
 import api from "../api";
 import DashboardLayout from "../components/DashboardLayout";
-import { useTheme } from "../context/ThemeContext";
 import { BarcodeScanner } from "../components/ui/BarcodeScanner";
-import { Camera } from "lucide-react";
+import { useTheme } from "../context/ThemeContext";
+import { createClientId, readCache, saveCache } from "../offline/db";
+import { getPendingLoansCount, queueLoanTransaction, syncPendingLoans } from "../offline/syncLoans";
 
 interface Student {
   id: string | number;
@@ -29,6 +31,7 @@ interface Loan {
   bookTitle?: string;
   dueDate: string;
   status: string;
+  syncStatus?: "online" | "pending";
 }
 
 const normalizeLoan = (loan: any): Loan => ({
@@ -39,6 +42,7 @@ const normalizeLoan = (loan: any): Loan => ({
   bookTitle: loan.bookTitle || loan.book?.title || "Sin libro",
   dueDate: loan.dueDate ? new Date(loan.dueDate).toISOString().slice(0, 10) : "",
   status: loan.status || "ACTIVE",
+  syncStatus: loan.syncStatus || "online",
 });
 
 export default function QuickLoan() {
@@ -54,6 +58,8 @@ export default function QuickLoan() {
   const [showBookSuggestions, setShowBookSuggestions] = useState(false);
   const [showScanner, setShowScanner] = useState(false);
   const [scanTarget, setScanTarget] = useState<"student" | "book" | null>(null);
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const [pendingSyncCount, setPendingSyncCount] = useState(0);
 
   const [form, setForm] = useState({
     userId: "",
@@ -66,66 +72,116 @@ export default function QuickLoan() {
     dueDate: "",
   });
 
-  // --- CARGAR ESTUDIANTES Y LIBROS ---
   useEffect(() => {
-    const loadData = async () => {
-      setLoading(true);
-      try {
-        const [studentsRes, booksRes, loansRes] = await Promise.all([
-          api.get("/users", { params: { role: "student" } }),
-          api.get("/books"),
-          api.get("/loans"),
-        ]);
-
-        const rawStudents = studentsRes.data?.success
-          ? studentsRes.data.data
-          : studentsRes.data || [];
-        const filteredStudents = (Array.isArray(rawStudents) ? rawStudents : []).filter(
-          (u: any) => u.role === "student"
-        );
-        setStudents(filteredStudents);
-
-        const rawBooks = booksRes.data?.success
-          ? booksRes.data.data
-          : booksRes.data || [];
-        const filteredBooks = (Array.isArray(rawBooks) ? rawBooks : []).filter(
-          (b: any) => b.available === true
-        );
-        setBooks(filteredBooks);
-
-        const rawLoans = loansRes.data?.success
-          ? loansRes.data.data
-          : loansRes.data || [];
-        const normalizedLoans = (Array.isArray(rawLoans) ? rawLoans : []).map(normalizeLoan);
-        setLoans(normalizedLoans);
-
-        setStatusType("ok");
-        setStatusMessage(`${filteredStudents.length} estudiantes, ${filteredBooks.length} libros disponibles y ${normalizedLoans.length} préstamos cargados`);
-      } catch (err: any) {
-        setStatusType("error");
-        const detail = err?.response?.status
-          ? `Error ${err.response.status} al cargar datos.`
-          : "No se pudo conectar con el servidor.";
-        setStatusMessage(detail);
-        console.error("Error cargando datos:", err);
-      } finally {
-        setLoading(false);
-      }
-    };
-
     loadData();
   }, []);
 
-  // --- BÚSQUEDA DE ESTUDIANTES EN TIEMPO REAL ---
-  const searchStudentLower = form.studentSearch.toLowerCase().trim();
-  const exactStudentMatch = students.filter(s => s.studentId && s.studentId.toLowerCase() === searchStudentLower);
-  
-  const filteredStudents = exactStudentMatch.length > 0 
-    ? exactStudentMatch
-    : students.filter((s) =>
-        s.name.toLowerCase().includes(searchStudentLower) ||
-        s.studentId.toLowerCase().includes(searchStudentLower)
+  useEffect(() => {
+    const updateOnlineState = () => {
+      setIsOnline(navigator.onLine);
+      refreshPendingCount();
+    };
+
+    window.addEventListener("online", updateOnlineState);
+    window.addEventListener("offline", updateOnlineState);
+    window.addEventListener("offline-sync-queue-changed", refreshPendingCount);
+    refreshPendingCount();
+
+    return () => {
+      window.removeEventListener("online", updateOnlineState);
+      window.removeEventListener("offline", updateOnlineState);
+      window.removeEventListener("offline-sync-queue-changed", refreshPendingCount);
+    };
+  }, []);
+
+  const loadData = async () => {
+    setLoading(true);
+    try {
+      const [studentsRes, booksRes, loansRes] = await Promise.all([
+        api.get("/users", { params: { role: "student" } }),
+        api.get("/books"),
+        api.get("/loans"),
+      ]);
+
+      const rawStudents = studentsRes.data?.success ? studentsRes.data.data : studentsRes.data || [];
+      const filteredStudents = (Array.isArray(rawStudents) ? rawStudents : []).filter(
+        (u: any) => u.role === "student"
       );
+      setStudents(filteredStudents);
+
+      const rawBooks = booksRes.data?.success ? booksRes.data.data : booksRes.data || [];
+      const filteredBooks = (Array.isArray(rawBooks) ? rawBooks : []).filter(
+        (b: any) => b.available === true
+      );
+      setBooks(filteredBooks);
+
+      const rawLoans = loansRes.data?.success ? loansRes.data.data : loansRes.data || [];
+      const normalizedLoans = (Array.isArray(rawLoans) ? rawLoans : []).map(normalizeLoan);
+      setLoans(normalizedLoans);
+
+      await Promise.all([
+        saveCache("quickLoan:students", filteredStudents),
+        saveCache("quickLoan:books", filteredBooks),
+        saveCache("quickLoan:loans", normalizedLoans),
+      ]);
+
+      setStatusType("ok");
+      setStatusMessage(
+        `${filteredStudents.length} estudiantes, ${filteredBooks.length} libros disponibles y ${normalizedLoans.length} prestamos cargados`
+      );
+    } catch (err: any) {
+      const [cachedStudents, cachedBooks, cachedLoans] = await Promise.all([
+        readCache<Student[]>("quickLoan:students"),
+        readCache<Book[]>("quickLoan:books"),
+        readCache<Loan[]>("quickLoan:loans"),
+      ]);
+
+      if (cachedStudents || cachedBooks || cachedLoans) {
+        setStudents(cachedStudents || []);
+        setBooks(cachedBooks || []);
+        setLoans(cachedLoans || []);
+        setStatusType("info");
+        setStatusMessage("Modo offline: usando datos guardados en este dispositivo.");
+      } else {
+        setStatusType("error");
+        const detail = err?.response?.status
+          ? `Error ${err.response.status} al cargar datos.`
+          : "No se pudo conectar con el servidor y no hay datos offline guardados.";
+        setStatusMessage(detail);
+      }
+      console.error("Error cargando datos:", err);
+    } finally {
+      setLoading(false);
+      refreshPendingCount();
+    }
+  };
+
+  const searchStudentLower = form.studentSearch.toLowerCase().trim();
+  const exactStudentMatch = students.filter(
+    (s) => s.studentId && s.studentId.toLowerCase() === searchStudentLower
+  );
+
+  const filteredStudents =
+    exactStudentMatch.length > 0
+      ? exactStudentMatch
+      : students.filter(
+          (s) =>
+            s.name.toLowerCase().includes(searchStudentLower) ||
+            s.studentId.toLowerCase().includes(searchStudentLower)
+        );
+
+  const searchBookLower = form.bookSearch.toLowerCase().trim();
+  const exactBookMatch = books.filter((b) => b.isbn && b.isbn.toLowerCase() === searchBookLower);
+
+  const filteredBooks =
+    exactBookMatch.length > 0
+      ? exactBookMatch
+      : books.filter(
+          (b) =>
+            b.title.toLowerCase().includes(searchBookLower) ||
+            b.author.toLowerCase().includes(searchBookLower) ||
+            (b.isbn && b.isbn.toLowerCase().includes(searchBookLower))
+        );
 
   const handleSelectStudent = (student: Student) => {
     setForm({
@@ -139,25 +195,9 @@ export default function QuickLoan() {
   };
 
   const handleStudentSearchChange = (value: string) => {
-    setForm({
-      ...form,
-      studentSearch: value,
-      userId: "",
-    });
+    setForm({ ...form, studentSearch: value, userId: "" });
     setShowStudentSuggestions(true);
   };
-
-  // --- BÚSQUEDA DE LIBROS EN TIEMPO REAL ---
-  const searchBookLower = form.bookSearch.toLowerCase().trim();
-  const exactBookMatch = books.filter(b => b.isbn && b.isbn.toLowerCase() === searchBookLower);
-  
-  const filteredBooks = exactBookMatch.length > 0
-    ? exactBookMatch
-    : books.filter((b) =>
-        b.title.toLowerCase().includes(searchBookLower) ||
-        b.author.toLowerCase().includes(searchBookLower) ||
-        (b.isbn && b.isbn.toLowerCase().includes(searchBookLower))
-      );
 
   const handleSelectBook = (book: Book) => {
     setForm({
@@ -170,24 +210,24 @@ export default function QuickLoan() {
   };
 
   const handleBookSearchChange = (value: string) => {
-    setForm({
-      ...form,
-      bookSearch: value,
-      bookId: "",
-    });
+    setForm({ ...form, bookSearch: value, bookId: "" });
     setShowBookSuggestions(true);
   };
 
   const handleScan = (decodedText: string) => {
     if (scanTarget === "student") {
-      const exactMatch = students.find(s => s.studentId && s.studentId.toLowerCase() === decodedText.toLowerCase());
+      const exactMatch = students.find(
+        (s) => s.studentId && s.studentId.toLowerCase() === decodedText.toLowerCase()
+      );
       if (exactMatch) {
         handleSelectStudent(exactMatch);
       } else {
-        alert("Alumno no encontrado con esa matrícula.");
+        alert("Alumno no encontrado con esa matricula.");
       }
     } else if (scanTarget === "book") {
-      const exactMatch = books.find(b => b.isbn && b.isbn.toLowerCase() === decodedText.toLowerCase());
+      const exactMatch = books.find(
+        (b) => b.isbn && b.isbn.toLowerCase() === decodedText.toLowerCase()
+      );
       if (exactMatch) {
         handleSelectBook(exactMatch);
       } else {
@@ -200,7 +240,7 @@ export default function QuickLoan() {
 
   const handleSubmit = async () => {
     if (!form.userId || !form.bookId || !form.dueDate) {
-      alert("Selecciona alumno, libro y fecha de devolución");
+      alert("Selecciona alumno, libro y fecha de devolucion");
       return;
     }
 
@@ -215,54 +255,140 @@ export default function QuickLoan() {
 
       const newLoan = res.data?.success ? res.data.data : res.data;
       const normalizedLoan = normalizeLoan(newLoan);
-      setLoans((prev) => [normalizedLoan, ...prev]);
-      setBooks((prev) => prev.filter((b) => String(b.id) !== String(form.bookId)));
-
-      // Limpiar form
-      setForm({
-        userId: "",
-        studentSearch: "",
-        studentId: "",
-        department: "",
-        bookId: "",
-        bookSearch: "",
-        bookTitle: "",
-        dueDate: "",
-      });
-      setStatusMessage("✅ Préstamo registrado correctamente");
+      const nextLoans = [normalizedLoan, ...loans];
+      const nextBooks = books.filter((b) => String(b.id) !== String(form.bookId));
+      setLoans(nextLoans);
+      setBooks(nextBooks);
+      await Promise.all([
+        saveCache("quickLoan:loans", nextLoans),
+        saveCache("quickLoan:books", nextBooks),
+      ]);
+      resetForm();
+      setStatusMessage("Prestamo registrado correctamente");
       setStatusType("ok");
     } catch (err: any) {
-      const detail = err?.response?.status
-        ? `Error ${err.response.status}. ${err.response.data?.message || ""}`
-        : err?.message || "Sin conexión con el servidor.";
-      setActionError(detail);
-      console.error("Error creando préstamo:", err);
+      const shouldQueueOffline = !err?.response || !navigator.onLine;
+
+      if (!shouldQueueOffline) {
+        const detail = err?.response?.status
+          ? `Error ${err.response.status}. ${err.response.data?.message || ""}`
+          : err?.message || "Sin conexion con el servidor.";
+        setActionError(detail);
+        console.error("Error creando prestamo:", err);
+        return;
+      }
+
+      const tenantId = localStorage.getItem("tenantId");
+      if (!tenantId) {
+        setActionError("No se pudo guardar offline porque falta el tenant de la sesion.");
+        return;
+      }
+
+      const clientId = createClientId("loan");
+      const offlineLoan = normalizeLoan({
+        id: clientId,
+        userId: form.userId,
+        bookId: form.bookId,
+        user: { name: form.studentSearch },
+        book: { title: form.bookTitle },
+        dueDate: form.dueDate,
+        status: "ACTIVE",
+        syncStatus: "pending",
+      });
+
+      await queueLoanTransaction({
+        clientId,
+        tenantId,
+        userId: form.userId,
+        bookId: form.bookId,
+        loanDate: new Date().toISOString(),
+        dueDate: form.dueDate,
+        status: "BORROWED",
+        studentName: form.studentSearch,
+        bookTitle: form.bookTitle,
+      });
+
+      const nextLoans = [offlineLoan, ...loans];
+      const nextBooks = books.filter((b) => String(b.id) !== String(form.bookId));
+      setLoans(nextLoans);
+      setBooks(nextBooks);
+      await Promise.all([
+        saveCache("quickLoan:loans", nextLoans),
+        saveCache("quickLoan:books", nextBooks),
+      ]);
+
+      resetForm();
+      setStatusType("info");
+      setStatusMessage("Prestamo guardado offline. Se sincronizara cuando vuelva internet.");
+      refreshPendingCount();
+      console.error("Prestamo guardado offline por error de red:", err);
     }
   };
 
+  const handleManualSync = async () => {
+    const result = await syncPendingLoans();
+    await refreshPendingCount();
+
+    if (result.error) {
+      setStatusType("error");
+      setStatusMessage(`No se pudo sincronizar: ${result.error}`);
+    } else if (result.processed > 0) {
+      setStatusType("ok");
+      setStatusMessage(`Se sincronizaron ${result.processed} movimientos pendientes.`);
+      loadData();
+    } else {
+      setStatusType("info");
+      setStatusMessage("No hay movimientos pendientes por sincronizar.");
+    }
+  };
+
+  const resetForm = () => {
+    setForm({
+      userId: "",
+      studentSearch: "",
+      studentId: "",
+      department: "",
+      bookId: "",
+      bookSearch: "",
+      bookTitle: "",
+      dueDate: "",
+    });
+  };
+
+  async function refreshPendingCount() {
+    setPendingSyncCount(await getPendingLoansCount());
+  }
+
   return (
     <DashboardLayout>
-      <h1 className={`text-4xl font-bold mb-8 ${isDark ? "text-blue-400" : "text-[#1E3A5F]"}`}>Registrar Préstamo</h1>
+      <h1 className={`text-4xl font-bold mb-8 ${isDark ? "text-blue-400" : "text-[#1E3A5F]"}`}>
+        Registrar Prestamo
+      </h1>
 
       {statusMessage && (
-        <div
-          className={`p-4 rounded-xl mb-6 font-medium transition-colors ${
-            statusType === "error"
-              ? isDark 
-                ? "bg-red-900 text-red-200 border border-red-700"
-                : "bg-red-50 text-red-700 border border-red-200"
-              : statusType === "ok"
-              ? isDark
-                ? "bg-green-900 text-green-200 border border-green-700"
-                : "bg-green-50 text-green-700 border border-green-200"
-              : isDark
-              ? "bg-blue-900 text-blue-200 border border-blue-700"
-              : "bg-blue-50 text-blue-700 border border-blue-200"
-          }`}
-        >
+        <div className={`p-4 rounded-xl mb-6 font-medium transition-colors ${messageClass(statusType, isDark)}`}>
           {statusMessage}
         </div>
       )}
+
+      <div className={`p-4 rounded-xl mb-6 font-medium border ${connectionClass(isOnline, isDark)}`}>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <span>
+            {isOnline ? "Con conexion" : "Sin conexion: los prestamos se guardaran offline"}
+            {pendingSyncCount > 0 ? ` - ${pendingSyncCount} pendiente(s) de sincronizar` : ""}
+          </span>
+          {pendingSyncCount > 0 && (
+            <button
+              type="button"
+              onClick={handleManualSync}
+              disabled={!isOnline}
+              className="rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Sincronizar ahora
+            </button>
+          )}
+        </div>
+      </div>
 
       <div className={`p-6 rounded-2xl shadow-sm border transition-colors ${isDark ? "bg-slate-800 border-slate-700" : "bg-white border-[#E5E7EB]"}`}>
         {actionError && (
@@ -271,20 +397,21 @@ export default function QuickLoan() {
           </div>
         )}
 
+        {loading && (
+          <div className={`mb-4 text-sm font-medium ${isDark ? "text-slate-300" : "text-slate-600"}`}>
+            Cargando datos...
+          </div>
+        )}
+
         <div className="grid md:grid-cols-2 gap-6">
-          {/* SECCIÓN ALUMNO */}
           <div>
             <h2 className={`flex justify-between items-center text-lg font-semibold mb-4 ${isDark ? "text-blue-400" : "text-[#1E3A5F]"}`}>
-              <span>👤 Alumno</span>
+              <span>Alumno</span>
               <button
                 type="button"
                 onClick={() => { setScanTarget("student"); setShowScanner(true); }}
-                className={`p-2 rounded-lg border transition-all flex items-center justify-center ${
-                  isDark
-                    ? "bg-slate-800 border-slate-600 text-slate-300 hover:bg-slate-700 hover:text-white"
-                    : "bg-slate-100 border-slate-200 text-slate-700 hover:bg-slate-200"
-                }`}
-                title="Escanear matrícula"
+                className={`p-2 rounded-lg border transition-all flex items-center justify-center ${isDark ? "bg-slate-800 border-slate-600 text-slate-300 hover:bg-slate-700 hover:text-white" : "bg-slate-100 border-slate-200 text-slate-700 hover:bg-slate-200"}`}
+                title="Escanear matricula"
               >
                 <Camera size={18} />
               </button>
@@ -293,7 +420,7 @@ export default function QuickLoan() {
             <div className="relative">
               <input
                 type="text"
-                placeholder="Escribe nombre o matrícula..."
+                placeholder="Escribe nombre o matricula..."
                 value={form.studentSearch}
                 onChange={(e) => handleStudentSearchChange(e.target.value)}
                 onFocus={() => setShowStudentSuggestions(true)}
@@ -305,11 +432,14 @@ export default function QuickLoan() {
                   {filteredStudents.map((student) => (
                     <button
                       key={student.id}
+                      type="button"
                       onClick={() => handleSelectStudent(student)}
                       className={`w-full text-left px-4 py-3 transition-colors border-b last:border-b-0 ${isDark ? "hover:bg-slate-600 text-white border-slate-600" : "hover:bg-[#F8F9FB] text-black border-[#E5E7EB]"}`}
                     >
                       <div className="font-medium">{student.name}</div>
-                      <div className={`text-sm ${isDark ? "text-slate-400" : "text-gray-500"}`}>{student.studentId} • {student.department}</div>
+                      <div className={`text-sm ${isDark ? "text-slate-400" : "text-gray-500"}`}>
+                        {student.studentId} - {student.department}
+                      </div>
                     </button>
                   ))}
                 </div>
@@ -318,24 +448,19 @@ export default function QuickLoan() {
 
             {form.userId && (
               <div className={`mt-3 p-3 rounded-lg border transition-colors ${isDark ? "bg-green-900 border-green-700" : "bg-green-50 border-green-200"}`}>
-                <p className={`text-sm font-medium ${isDark ? "text-green-200" : "text-green-700"}`}>✅ {form.studentSearch}</p>
+                <p className={`text-sm font-medium ${isDark ? "text-green-200" : "text-green-700"}`}>{form.studentSearch}</p>
                 <p className={`text-xs ${isDark ? "text-green-300" : "text-green-600"}`}>Mat: {form.studentId} | {form.department}</p>
               </div>
             )}
           </div>
 
-          {/* SECCIÓN LIBRO */}
           <div>
             <h2 className={`flex justify-between items-center text-lg font-semibold mb-4 ${isDark ? "text-blue-400" : "text-[#1E3A5F]"}`}>
-              <span>📚 Libro</span>
+              <span>Libro</span>
               <button
                 type="button"
                 onClick={() => { setScanTarget("book"); setShowScanner(true); }}
-                className={`p-2 rounded-lg border transition-all flex items-center justify-center ${
-                  isDark
-                    ? "bg-slate-800 border-slate-600 text-slate-300 hover:bg-slate-700 hover:text-white"
-                    : "bg-slate-100 border-slate-200 text-slate-700 hover:bg-slate-200"
-                }`}
+                className={`p-2 rounded-lg border transition-all flex items-center justify-center ${isDark ? "bg-slate-800 border-slate-600 text-slate-300 hover:bg-slate-700 hover:text-white" : "bg-slate-100 border-slate-200 text-slate-700 hover:bg-slate-200"}`}
                 title="Escanear libro"
               >
                 <Camera size={18} />
@@ -345,7 +470,7 @@ export default function QuickLoan() {
             <div className="relative">
               <input
                 type="text"
-                placeholder="Escribe título o autor..."
+                placeholder="Escribe titulo o autor..."
                 value={form.bookSearch}
                 onChange={(e) => handleBookSearchChange(e.target.value)}
                 onFocus={() => setShowBookSuggestions(true)}
@@ -357,6 +482,7 @@ export default function QuickLoan() {
                   {filteredBooks.map((book) => (
                     <button
                       key={book.id}
+                      type="button"
                       onClick={() => handleSelectBook(book)}
                       className={`w-full text-left px-4 py-3 transition-colors border-b last:border-b-0 ${isDark ? "hover:bg-slate-600 text-white border-slate-600" : "hover:bg-[#F8F9FB] text-black border-[#E5E7EB]"}`}
                     >
@@ -370,13 +496,7 @@ export default function QuickLoan() {
 
             {form.bookId && (
               <div className={`mt-3 p-3 rounded-lg border transition-colors ${isDark ? "bg-green-900 border-green-700" : "bg-green-50 border-green-200"}`}>
-                <p className={`text-sm font-medium ${isDark ? "text-green-200" : "text-green-700"}`}>✅ {form.bookTitle}</p>
-              </div>
-            )}
-
-            {form.bookId && (
-              <div className={`mt-3 p-3 rounded-lg border transition-colors ${isDark ? "bg-green-900 border-green-700" : "bg-green-50 border-green-200"}`}>
-                <p className={`text-sm font-medium ${isDark ? "text-green-200" : "text-green-700"}`}>✅ {form.bookTitle}</p>
+                <p className={`text-sm font-medium ${isDark ? "text-green-200" : "text-green-700"}`}>{form.bookTitle}</p>
               </div>
             )}
           </div>
@@ -384,7 +504,7 @@ export default function QuickLoan() {
 
         <div className={`mt-6 border-t pt-6 transition-colors ${isDark ? "border-slate-700" : "border-[#E5E7EB]"}`}>
           <label className={`block mb-2 text-sm font-medium ${isDark ? "text-slate-300" : "text-gray-700"}`}>
-            📅 Fecha de devolución
+            Fecha de devolucion
           </label>
           <input
             type="date"
@@ -396,18 +516,19 @@ export default function QuickLoan() {
 
         <div className="flex gap-4 mt-6">
           <button
+            type="button"
             onClick={handleSubmit}
             disabled={!form.userId || !form.bookId || !form.dueDate}
             className={`px-6 py-3 rounded-xl transition-all duration-300 font-semibold text-white disabled:opacity-50 disabled:cursor-not-allowed ${isDark ? "bg-blue-600 hover:bg-blue-700 hover:shadow-lg hover:-translate-y-1" : "bg-[#1E3A5F] hover:bg-[#3B82F6] hover:shadow-lg hover:-translate-y-1"}`}
           >
-            ✔️ Registrar Préstamo
+            Registrar Prestamo
           </button>
         </div>
       </div>
 
       <div className={`mt-8 rounded-2xl shadow-sm border overflow-hidden transition-colors ${isDark ? "bg-slate-800 border-slate-700" : "bg-white border-[#E5E7EB]"}`}>
         <div className={`p-5 border-b transition-colors ${isDark ? "bg-slate-700 border-slate-600" : "bg-white border-[#E5E7EB]"}`}>
-          <h2 className={`text-xl font-bold ${isDark ? "text-blue-400" : "text-[#1E3A5F]"}`}>📋 Préstamos Registrados</h2>
+          <h2 className={`text-xl font-bold ${isDark ? "text-blue-400" : "text-[#1E3A5F]"}`}>Prestamos Registrados</h2>
         </div>
 
         <table className="w-full">
@@ -415,7 +536,7 @@ export default function QuickLoan() {
             <tr>
               <th className="p-3 text-left">Alumno</th>
               <th className="p-3 text-left">Libro</th>
-              <th className="p-3 text-left">Devolución</th>
+              <th className="p-3 text-left">Devolucion</th>
               <th className="p-3 text-left">Estado</th>
             </tr>
           </thead>
@@ -427,8 +548,8 @@ export default function QuickLoan() {
                 <td className={`p-3 ${isDark ? "text-slate-200" : "text-black"}`}>{loan.bookTitle}</td>
                 <td className={`p-3 ${isDark ? "text-slate-200" : "text-black"}`}>{loan.dueDate}</td>
                 <td className="p-3">
-                  <span className={`px-3 py-1 rounded-full text-sm font-medium transition-colors ${isDark ? "bg-green-900 text-green-200" : "bg-green-100 text-green-700"}`}>
-                    {loan.status}
+                  <span className={`px-3 py-1 rounded-full text-sm font-medium transition-colors ${loan.syncStatus === "pending" ? "bg-amber-100 text-amber-700" : isDark ? "bg-green-900 text-green-200" : "bg-green-100 text-green-700"}`}>
+                    {loan.syncStatus === "pending" ? "Pendiente sync" : loan.status}
                   </span>
                 </td>
               </tr>
@@ -437,7 +558,7 @@ export default function QuickLoan() {
             {loans.length === 0 && (
               <tr>
                 <td colSpan={4} className={`p-8 text-center font-medium ${isDark ? "text-slate-400" : "text-gray-500"}`}>
-                  No hay préstamos registrados
+                  No hay prestamos registrados
                 </td>
               </tr>
             )}
@@ -456,4 +577,32 @@ export default function QuickLoan() {
       )}
     </DashboardLayout>
   );
+}
+
+function messageClass(type: "ok" | "error" | "info", isDark: boolean) {
+  if (type === "error") {
+    return isDark
+      ? "bg-red-900 text-red-200 border border-red-700"
+      : "bg-red-50 text-red-700 border border-red-200";
+  }
+  if (type === "ok") {
+    return isDark
+      ? "bg-green-900 text-green-200 border border-green-700"
+      : "bg-green-50 text-green-700 border border-green-200";
+  }
+  return isDark
+    ? "bg-blue-900 text-blue-200 border border-blue-700"
+    : "bg-blue-50 text-blue-700 border border-blue-200";
+}
+
+function connectionClass(isOnline: boolean, isDark: boolean) {
+  if (isOnline) {
+    return isDark
+      ? "bg-emerald-900/20 border-emerald-700 text-emerald-200"
+      : "bg-emerald-50 border-emerald-200 text-emerald-700";
+  }
+
+  return isDark
+    ? "bg-amber-900/20 border-amber-700 text-amber-200"
+    : "bg-amber-50 border-amber-200 text-amber-700";
 }
