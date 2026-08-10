@@ -1,52 +1,93 @@
 const nodemailer = require('nodemailer');
 const dns = require('dns');
+const { promisify } = require('util');
 
-// Configuración de transporte usando Gmail.
-//
+const resolve4 = promisify(dns.resolve4);
+
+const GMAIL_HOST = 'smtp.gmail.com';
+const GMAIL_PORT = 465;
+
 // Timeouts explícitos: sin esto, un fallo de conexión/autenticación con Gmail
 // puede quedarse colgado mucho tiempo (SMTP no siempre falla rápido). Si eso
 // pasa dentro de un loop como remindAllDueToday, la petición completa puede
 // superar el timeout del proxy (p. ej. Railway) antes de que Express alcance
 // a responder — el navegador entonces reporta un error de "CORS" genérico,
 // aunque el problema real es que la respuesta nunca llegó a tiempo.
-//
-// IPv4 forzado — CRÍTICO en Railway: smtp.gmail.com resuelve tanto a IPv4
-// como a IPv6, pero el contenedor de Railway no tiene salida IPv6 funcional
-// (falla con "ENETUNREACH ...:465"). La opción `family: 4` de nodemailer NO
-// es suficiente aquí (se comprobó en producción que se sigue resolviendo a
-// IPv6), así que se sobrescribe directamente la función `lookup` que usa
-// nodemailer para resolver el host, forzando `dns.lookup(host, {family:4})`
-// sin importar qué. Por eso también se usa host/puerto explícitos en vez del
-// atajo `service: 'gmail'`, para no depender de su resolución interna.
-const forceIPv4Lookup = (hostname, options, callback) => {
-  if (typeof options === 'function') {
-    callback = options;
-    options = {};
-  }
-  dns.lookup(hostname, { ...options, family: 4 }, callback);
+const TRANSPORT_TIMEOUTS = {
+  connectionTimeout: 10_000,
+  greetingTimeout: 10_000,
+  socketTimeout: 15_000,
 };
 
-const transporter = nodemailer.createTransport({
-  host: 'smtp.gmail.com',
-  port: 465,
-  secure: true,
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-  family: 4,
-  lookup: forceIPv4Lookup,
-  connectionTimeout: 10_000, // tiempo máx. para conectar al servidor SMTP
-  greetingTimeout: 10_000,   // tiempo máx. esperando el saludo del servidor
-  socketTimeout: 15_000,     // tiempo máx. de inactividad en el socket
-});
+// --- IPv4 forzado a nivel de socket, no de "opciones que nodemailer podría
+// o no respetar" ---
+//
+// Railway no tiene salida IPv6 funcional: smtp.gmail.com resuelve tanto a
+// IPv4 como a IPv6, y cuando le toca IPv6 la conexión falla con
+// "ENETUNREACH ...:465" o se cuelga.
+//
+// Ya se probaron dos formas "declarativas" de forzar IPv4 (`family: 4` y un
+// `lookup` personalizado pasados como opciones a nodemailer.createTransport)
+// y NINGUNA de las dos tuvo efecto en producción — nodemailer/smtp-connection
+// no las está usando para resolver la conexión real, así que confiar en esas
+// opciones fue un callejón sin salida.
+//
+// La única forma 100% infalible es resolver la IP nosotros mismos ANTES de
+// crear la conexión, usando dns.resolve4 (que por definición SOLO devuelve
+// registros A / IPv4, nunca puede devolver una IPv6), y pasarle esa IP
+// literal a nodemailer como `host`. Una conexión TCP a una IP literal no
+// puede "convertirse" en IPv6 por sí sola.
+//
+// Como nos conectamos por IP y no por nombre, el certificado TLS de Gmail
+// (emitido para "smtp.gmail.com") no coincidiría con la IP durante el
+// handshake — por eso se fija `tls.servername` al hostname real, para que la
+// validación del certificado se siga haciendo contra el nombre correcto
+// (esto es el equivalente a fijar el SNI manualmente).
+let cachedTransporterPromise = null;
 
-// Marca de verificación en el log de arranque: si esta línea NO aparece en
-// los logs de Railway después de un deploy, significa que el deploy no trajo
-// este archivo actualizado (build viejo, deploy no se disparó, rama
-// incorrecta, etc.) — hay que investigar el deploy antes de seguir
-// depurando el envío de correos.
-console.log('[emailService] Transporter Gmail inicializado con lookup forzado a IPv4');
+async function buildTransporter() {
+  let host = GMAIL_HOST;
+  try {
+    const addresses = await resolve4(GMAIL_HOST);
+    if (addresses && addresses.length > 0) {
+      host = addresses[0];
+    }
+  } catch (err) {
+    console.error('[emailService] No se pudo resolver IPv4 de smtp.gmail.com, se intentará con el hostname directo:', err.message);
+  }
+
+  console.log(`[emailService] Transporter Gmail inicializado, conectando por IP fija: ${host} (servername=${GMAIL_HOST})`);
+
+  return nodemailer.createTransport({
+    host,
+    port: GMAIL_PORT,
+    secure: true,
+    auth: {
+      user: process.env.EMAIL_USER,
+      pass: process.env.EMAIL_PASS,
+    },
+    tls: {
+      servername: GMAIL_HOST,
+    },
+    ...TRANSPORT_TIMEOUTS,
+  });
+}
+
+// El transporter se resuelve una sola vez (se cachea la promesa) para no
+// hacer una consulta DNS en cada correo. Si un envío falla, se invalida el
+// cache para que el siguiente intento vuelva a resolver la IP desde cero
+// (por si la IP que teníamos cacheada dejó de responder — Gmail balancea
+// tráfico entre varias IPs).
+function getTransporter() {
+  if (!cachedTransporterPromise) {
+    cachedTransporterPromise = buildTransporter();
+  }
+  return cachedTransporterPromise;
+}
+
+function invalidateTransporterCache() {
+  cachedTransporterPromise = null;
+}
 
 const sendTempPasswordEmail = async ({ name, email, tempPassword, credentialImage }) => {
   try {
@@ -83,10 +124,12 @@ const sendTempPasswordEmail = async ({ name, email, tempPassword, credentialImag
       ];
     }
 
+    const transporter = await getTransporter();
     const info = await transporter.sendMail(mailOptions);
     return { success: true, data: info };
   } catch (err) {
     console.error('Nodemailer error:', err.message);
+    invalidateTransporterCache();
     return { success: false, error: err };
   }
 };
@@ -110,10 +153,12 @@ const sendLoanDueReminderEmail = async ({ name, email, bookTitle, dueDate }) => 
       `,
     };
 
+    const transporter = await getTransporter();
     const info = await transporter.sendMail(mailOptions);
     return { success: true, data: info };
   } catch (err) {
     console.error('Nodemailer error:', err.message);
+    invalidateTransporterCache();
     return { success: false, error: err };
   }
 };
