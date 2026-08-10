@@ -1,4 +1,5 @@
 require('dotenv').config();
+const dns = require('dns');
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
@@ -18,6 +19,14 @@ const billingRoutes = require('./src/routes/billingRoutes');
 const reportRoutes = require('./src/routes/reportRoutes');
 
 const app = express();
+
+// Railway no tiene salida IPv6 funcional. Sin esto, Node puede preferir
+// resultados IPv6 al resolver dominios externos (Gmail SMTP, Mercado Pago,
+// etc.) y fallar con ENETUNREACH o colgarse hasta el timeout. Esto es un
+// respaldo global además del `family: 4` explícito en emailService.js.
+if (typeof dns.setDefaultResultOrder === 'function') {
+  dns.setDefaultResultOrder('ipv4first');
+}
 
 // ⬇️ AGREGAR ESTA LÍNEA (ANTES de los middlewares)
 app.set('trust proxy', 1);
