@@ -1,4 +1,5 @@
 const nodemailer = require('nodemailer');
+const dns = require('dns');
 
 // Configuración de transporte usando Gmail.
 //
@@ -9,22 +10,43 @@ const nodemailer = require('nodemailer');
 // a responder — el navegador entonces reporta un error de "CORS" genérico,
 // aunque el problema real es que la respuesta nunca llegó a tiempo.
 //
-// family: 4 — CRÍTICO en Railway: smtp.gmail.com resuelve tanto a IPv4 como a
-// IPv6, pero el contenedor de Railway no tiene salida IPv6 funcional. Sin
-// esto, Node a veces intenta conectar por IPv6 y falla con
-// "ENETUNREACH ...:465" o se cuelga hasta el connectionTimeout. Forzar IPv4
-// evita ambos casos.
+// IPv4 forzado — CRÍTICO en Railway: smtp.gmail.com resuelve tanto a IPv4
+// como a IPv6, pero el contenedor de Railway no tiene salida IPv6 funcional
+// (falla con "ENETUNREACH ...:465"). La opción `family: 4` de nodemailer NO
+// es suficiente aquí (se comprobó en producción que se sigue resolviendo a
+// IPv6), así que se sobrescribe directamente la función `lookup` que usa
+// nodemailer para resolver el host, forzando `dns.lookup(host, {family:4})`
+// sin importar qué. Por eso también se usa host/puerto explícitos en vez del
+// atajo `service: 'gmail'`, para no depender de su resolución interna.
+const forceIPv4Lookup = (hostname, options, callback) => {
+  if (typeof options === 'function') {
+    callback = options;
+    options = {};
+  }
+  dns.lookup(hostname, { ...options, family: 4 }, callback);
+};
+
 const transporter = nodemailer.createTransport({
-  service: 'gmail',
+  host: 'smtp.gmail.com',
+  port: 465,
+  secure: true,
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS,
   },
   family: 4,
+  lookup: forceIPv4Lookup,
   connectionTimeout: 10_000, // tiempo máx. para conectar al servidor SMTP
   greetingTimeout: 10_000,   // tiempo máx. esperando el saludo del servidor
   socketTimeout: 15_000,     // tiempo máx. de inactividad en el socket
 });
+
+// Marca de verificación en el log de arranque: si esta línea NO aparece en
+// los logs de Railway después de un deploy, significa que el deploy no trajo
+// este archivo actualizado (build viejo, deploy no se disparó, rama
+// incorrecta, etc.) — hay que investigar el deploy antes de seguir
+// depurando el envío de correos.
+console.log('[emailService] Transporter Gmail inicializado con lookup forzado a IPv4');
 
 const sendTempPasswordEmail = async ({ name, email, tempPassword, credentialImage }) => {
   try {
