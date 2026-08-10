@@ -1,12 +1,21 @@
 const nodemailer = require('nodemailer');
 
-// Configuración de transporte usando Gmail
+// Configuración de transporte usando Gmail.
+// Timeouts explícitos: sin esto, un fallo de conexión/autenticación con Gmail
+// puede quedarse colgado mucho tiempo (SMTP no siempre falla rápido). Si eso
+// pasa dentro de un loop como remindAllDueToday, la petición completa puede
+// superar el timeout del proxy (p. ej. Railway) antes de que Express alcance
+// a responder — el navegador entonces reporta un error de "CORS" genérico,
+// aunque el problema real es que la respuesta nunca llegó a tiempo.
 const transporter = nodemailer.createTransport({
   service: 'gmail',
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS,
   },
+  connectionTimeout: 10_000, // tiempo máx. para conectar al servidor SMTP
+  greetingTimeout: 10_000,   // tiempo máx. esperando el saludo del servidor
+  socketTimeout: 15_000,     // tiempo máx. de inactividad en el socket
 });
 
 const sendTempPasswordEmail = async ({ name, email, tempPassword, credentialImage }) => {

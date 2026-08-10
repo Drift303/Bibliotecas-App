@@ -293,28 +293,54 @@ const remindAllDueToday = async (req, res) => {
     let skipped = 0;
     const skippedDetails = [];
 
+    // Se separan primero los que ni siquiera tienen correo utilizable (no
+    // implica red, es instantáneo).
+    const withEmail = [];
     for (const loan of loans) {
       const contactEmail = getUsableContactEmail(tenant.type, loan.user);
       if (!contactEmail) {
-        // Caso 3: solo tiene teléfono de contacto, nunca se manda automático.
         skipped += 1;
-        skippedDetails.push({ loanId: loan.id, studentName: loan.user.name, contactPhone: loan.user.contactPhone || null });
+        skippedDetails.push({ loanId: loan.id, studentName: loan.user.name, contactPhone: loan.user.contactPhone || null, reason: 'NO_EMAIL' });
         continue;
       }
-      try {
-        await sendLoanDueReminderEmail({
+      withEmail.push({ loan, contactEmail });
+    }
+
+    // Los envíos de correo se lanzan en paralelo (no uno por uno con await
+    // secuencial). Antes, con muchos préstamos vencidos el mismo día, sumar
+    // el tiempo de cada intento SMTP uno tras otro podía hacer que la
+    // petición completa superara el timeout del proxy (Railway), y el
+    // navegador terminaba reportando un "error de CORS" genérico porque la
+    // respuesta nunca llegó a tiempo — el problema real era la duración
+    // total, no CORS. sendLoanDueReminderEmail nunca lanza (atrapa sus
+    // propios errores), así que Promise.all es seguro aquí: siempre resuelve.
+    const results = await Promise.all(
+      withEmail.map(async ({ loan, contactEmail }) => {
+        const result = await sendLoanDueReminderEmail({
           name: loan.user.name,
           email: contactEmail,
           bookTitle: loan.book.title,
           dueDate: loan.dueDate,
         });
-        await prisma.loan.update({ where: { id: loan.id }, data: { lastReminderSentAt: new Date() } });
-        sent += 1;
-      } catch (sendErr) {
-        console.error(`remindAllDueToday: fallo al enviar a loan ${loan.id}`, sendErr);
-        skipped += 1;
-        skippedDetails.push({ loanId: loan.id, studentName: loan.user.name, contactPhone: loan.user.contactPhone || null });
-      }
+        return { loan, result };
+      })
+    );
+
+    const succeeded = results.filter((r) => r.result.success);
+    const failed = results.filter((r) => !r.result.success);
+
+    if (succeeded.length > 0) {
+      await prisma.loan.updateMany({
+        where: { id: { in: succeeded.map((r) => r.loan.id) } },
+        data: { lastReminderSentAt: new Date() },
+      });
+    }
+    sent += succeeded.length;
+
+    for (const { loan, result } of failed) {
+      console.error(`remindAllDueToday: fallo al enviar a loan ${loan.id}`, result.error?.message || result.error);
+      skipped += 1;
+      skippedDetails.push({ loanId: loan.id, studentName: loan.user.name, contactPhone: loan.user.contactPhone || null, reason: 'SEND_FAILED' });
     }
 
     res.json({ success: true, data: { sent, skipped, skippedDetails } });
@@ -349,15 +375,20 @@ const sendReminder = async (req, res) => {
       });
     }
 
-    // Enviar correo de recordatorio (simulado o real si está integrado en emailService)
-    console.log(`[REMINDER] Recordatorio enviado a ${recipientEmail} por el libro ${loan.book.title}`);
-    
-    await sendLoanDueReminderEmail({
+    // Enviar correo de recordatorio
+    const result = await sendLoanDueReminderEmail({
       name: loan.user.name,
       email: recipientEmail,
       bookTitle: loan.book.title,
       dueDate: loan.dueDate
     });
+
+    if (!result.success) {
+      console.error(`sendReminder: fallo al enviar a ${recipientEmail}`, result.error?.message || result.error);
+      return res.status(502).json({ error: 'EMAIL_SEND_FAILED', detail: 'No se pudo entregar el correo. Revisa la configuración de EMAIL_USER/EMAIL_PASS.' });
+    }
+
+    console.log(`[REMINDER] Recordatorio enviado a ${recipientEmail} por el libro ${loan.book.title}`);
 
     const updated = await prisma.loan.update({
       where: { id: loanId },
