@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
 import { AlertCircle } from "lucide-react";
+import { useEffect, useState } from "react";
 import api from "../api";
 import DashboardLayout from "../components/DashboardLayout";
 import { useTheme } from "../context/ThemeContext";
@@ -14,6 +14,7 @@ interface Loan {
   book: string;
   loanDate: string;
   dueDate: string;
+  dueDateRaw: string | null;
   returnedDate: string | null;
   fine: number;
   status: "Activo" | "Vencido" | "Devuelto";
@@ -25,6 +26,9 @@ interface ReturnModalData {
   student: string;
   book: string;
   fine: number;
+  estimatedFine: number;
+  daysLate: number;
+  isEstimate: boolean;
 }
 
 const money = new Intl.NumberFormat("es-MX", {
@@ -37,8 +41,13 @@ export default function Loans() {
   const [loans, setLoans] = useState<Loan[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusMessage, setStatusMessage] = useState("");
+  const [finePerDay, setFinePerDay] = useState(5.0);
+
+  // Estado para controlar el modal de flujo de devolución
   const [activeReturn, setActiveReturn] = useState<ReturnModalData | null>(null);
   const [bookCondition, setBookCondition] = useState("Excelente");
+  const [replacementCost, setReplacementCost] = useState<number>(0);
+  const [returnFormError, setReturnFormError] = useState("");
   const [submittingReturn, setSubmittingReturn] = useState(false);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [pendingSyncCount, setPendingSyncCount] = useState(0);
@@ -69,19 +78,28 @@ export default function Loans() {
     try {
       setLoading(true);
       setStatusMessage("");
-      const res = await api.get("/loans");
-      const rawLoans = Array.isArray(res.data?.data) ? res.data.data : [];
+      const [loansRes, settingsRes] = await Promise.all([
+        api.get("/loans"),
+        api.get("/tenants/settings/current").catch(() => ({ data: { data: { finePerDay: 5.0 } } })),
+      ]);
+
+      const rawLoans = Array.isArray(loansRes.data?.data) ? loansRes.data.data : [];
       const normalizedLoans = rawLoans.map(mapLoan);
       setLoans(normalizedLoans);
+
+      if (settingsRes.data?.data?.finePerDay !== undefined) {
+        setFinePerDay(settingsRes.data.data.finePerDay);
+      }
+
       await saveCache("librarianLoans:loans", normalizedLoans);
     } catch (err) {
       const cachedLoans = await readCache<Loan[]>("librarianLoans:loans");
       if (cachedLoans) {
         setLoans(cachedLoans);
-        setStatusMessage("Modo offline: mostrando el ultimo historial guardado");
+        setStatusMessage("Modo offline: mostrando el último historial guardado");
       } else {
         setLoans([]);
-        setStatusMessage("No se pudieron cargar los prestamos");
+        setStatusMessage("No se pudieron cargar los préstamos");
       }
     } finally {
       setLoading(false);
@@ -89,14 +107,39 @@ export default function Loans() {
     }
   };
 
+  // Debe coincidir con el mismo offset usado en el backend (MX_UTC_OFFSET_HOURS)
+  // para que la estimación no se desfase un día.
+  const MX_UTC_OFFSET_HOURS = 6;
+  const getMxTodayStartMs = () => {
+    const nowUtc = new Date();
+    const mxNow = new Date(nowUtc.getTime() - MX_UTC_OFFSET_HOURS * 60 * 60 * 1000);
+    return Date.UTC(mxNow.getUTCFullYear(), mxNow.getUTCMonth(), mxNow.getUTCDate());
+  };
+
+  // Estimación de días de atraso y multa antes de confirmar la devolución.
+  const estimateFine = (loan: Loan) => {
+    if (loan.status !== "Vencido" || !loan.dueDateRaw) return { daysLate: 0, estimatedFine: 0 };
+    const dueMs = new Date(loan.dueDateRaw).getTime();
+    const msPerDay = 1000 * 60 * 60 * 24;
+    const daysLate = Math.max(0, Math.round((getMxTodayStartMs() - dueMs) / msPerDay));
+    return { daysLate, estimatedFine: daysLate * finePerDay };
+  };
+
+  // Abre el modal para configurar la devolución física
   const initiateReturnFlow = (loan: Loan) => {
+    const { daysLate, estimatedFine } = estimateFine(loan);
     setActiveReturn({
       loanId: loan.id,
       student: loan.student,
       book: loan.book,
       fine: loan.fine,
+      estimatedFine,
+      daysLate,
+      isEstimate: loan.fine === 0 && estimatedFine > 0,
     });
     setBookCondition("Excelente");
+    setReplacementCost(0);
+    setReturnFormError("");
   };
 
   const submitReturn = async () => {
@@ -104,23 +147,30 @@ export default function Loans() {
     const loan = loans.find((item) => item.id === activeReturn.loanId);
     if (!loan) return;
 
+    if (bookCondition === "Perdido" && !(replacementCost > 0)) {
+      setReturnFormError("Captura el costo de reposición para marcar el libro como perdido");
+      return;
+    }
+    setReturnFormError("");
+
     try {
       setSubmittingReturn(true);
       await api.post(`/loans/${activeReturn.loanId}/return`, {
         condition: bookCondition,
+        ...(bookCondition === "Perdido" && replacementCost > 0 ? { replacementCost } : {}),
       });
       setActiveReturn(null);
       loadLoans();
     } catch (err: any) {
       const shouldQueueOffline = !err?.response || !navigator.onLine;
       if (!shouldQueueOffline) {
-        setStatusMessage("No se pudo registrar la devolucion");
+        setStatusMessage("No se pudo registrar la devolución");
         return;
       }
 
       const tenantId = localStorage.getItem("tenantId");
       if (!tenantId) {
-        setStatusMessage("No se pudo guardar offline porque falta el tenant de la sesion");
+        setStatusMessage("No se pudo guardar offline porque falta el tenant de la sesión");
         return;
       }
 
@@ -151,7 +201,7 @@ export default function Loans() {
       setLoans(nextLoans);
       await saveCache("librarianLoans:loans", nextLoans);
       setActiveReturn(null);
-      setStatusMessage("Devolucion guardada offline. Se sincronizara cuando vuelva internet.");
+      setStatusMessage("Devolución guardada offline. Se sincronizará cuando vuelva internet.");
       refreshPendingCount();
     } finally {
       setSubmittingReturn(false);
@@ -176,7 +226,7 @@ export default function Loans() {
   return (
     <DashboardLayout>
       <h1 className={`text-4xl font-bold mb-8 ${isDark ? "text-blue-400" : "text-[#1E3A5F]"}`}>
-        Historial de Prestamos
+        Historial de Préstamos
       </h1>
 
       {statusMessage && (
@@ -189,7 +239,7 @@ export default function Loans() {
       <div className={`p-4 rounded-xl mb-6 font-medium border ${connectionClass(isOnline, isDark)}`}>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <span>
-            {isOnline ? "Con conexion" : "Sin conexion: las devoluciones se guardaran offline"}
+            {isOnline ? "Con conexión" : "Sin conexión: las devoluciones se guardarán offline"}
             {pendingSyncCount > 0 ? ` - ${pendingSyncCount} pendiente(s) de sincronizar` : ""}
           </span>
           {pendingSyncCount > 0 && (
@@ -206,8 +256,8 @@ export default function Loans() {
       </div>
 
       <div className="grid md:grid-cols-3 gap-4 mb-6">
-        <SummaryCard label="Prestamos Activos" value={loans.filter((loan) => loan.status === "Activo").length} isDark={isDark} tone="blue" />
-        <SummaryCard label="Prestamos Vencidos" value={loans.filter((loan) => loan.status === "Vencido").length} isDark={isDark} tone="red" />
+        <SummaryCard label="Préstamos Activos" value={loans.filter((loan) => loan.status === "Activo").length} isDark={isDark} tone="blue" />
+        <SummaryCard label="Préstamos Vencidos" value={loans.filter((loan) => loan.status === "Vencido").length} isDark={isDark} tone="red" />
         <SummaryCard label="Multas Pendientes" value={money.format(totalFines)} isDark={isDark} tone="amber" />
       </div>
 
@@ -221,13 +271,24 @@ export default function Loans() {
                 <th className="p-3 text-left font-semibold">Prestado</th>
                 <th className="p-3 text-left font-semibold">Vence</th>
                 <th className="p-3 text-left font-semibold">Estado</th>
-                <th className="p-3 text-center font-semibold">Accion</th>
+                <th className="p-3 text-center font-semibold">Acción</th>
               </tr>
             </thead>
 
             <tbody>
               {loans.map((loan, idx) => (
-                <tr key={loan.id} className={`border-b transition-colors ${rowClass(idx, isDark)}`}>
+                <tr
+                  key={loan.id}
+                  className={`border-b transition-colors ${
+                    isDark
+                      ? idx % 2 === 0
+                        ? "bg-slate-900 hover:bg-slate-800"
+                        : "bg-slate-800/50 hover:bg-slate-800"
+                      : idx % 2 === 0
+                      ? "bg-white hover:bg-slate-50"
+                      : "bg-slate-50 hover:bg-slate-100"
+                  }`}
+                >
                   <td className={`p-3 font-medium ${isDark ? "text-white" : "text-slate-900"}`}>{loan.student}</td>
                   <td className={`p-3 ${isDark ? "text-slate-400" : "text-slate-600"}`}>{loan.book}</td>
                   <td className={`p-3 ${isDark ? "text-slate-400" : "text-slate-600"}`}>{loan.loanDate}</td>
@@ -238,7 +299,7 @@ export default function Loans() {
                     </span>
                   </td>
                   <td className="p-3 text-center">
-                    {loan.status === "Activo" ? (
+                    {loan.status === "Activo" || loan.status === "Vencido" ? (
                       <button
                         onClick={() => initiateReturnFlow(loan)}
                         className="bg-green-600 text-white px-4 py-1.5 rounded-lg text-sm font-semibold transition-all duration-300 hover:bg-green-700"
@@ -246,7 +307,7 @@ export default function Loans() {
                         Devolver
                       </button>
                     ) : (
-                      <span className={`text-sm italic ${isDark ? "text-slate-500" : "text-slate-400"}`}>-</span>
+                      <span className={`text-sm italic ${isDark ? "text-slate-500" : "text-slate-400"}`}>—</span>
                     )}
                   </td>
                 </tr>
@@ -255,7 +316,7 @@ export default function Loans() {
               {!loading && loans.length === 0 && (
                 <tr>
                   <td colSpan={6} className={`p-8 text-center font-medium ${isDark ? "text-slate-400" : "text-slate-500"}`}>
-                    No hay prestamos registrados.
+                    No hay préstamos registrados.
                   </td>
                 </tr>
               )}
@@ -263,7 +324,7 @@ export default function Loans() {
               {loading && (
                 <tr>
                   <td colSpan={6} className={`p-8 text-center font-medium ${isDark ? "text-slate-400" : "text-slate-500"}`}>
-                    Cargando prestamos...
+                    Cargando préstamos...
                   </td>
                 </tr>
               )}
@@ -276,7 +337,7 @@ export default function Loans() {
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-6 z-50">
           <div className={`rounded-lg w-full max-w-md p-6 border ${isDark ? "bg-slate-900 border-slate-700" : "bg-white border-slate-200"}`}>
             <h2 className={`text-2xl font-bold mb-5 pb-2 border-b ${isDark ? "text-white border-slate-700" : "text-[#1E3A5F] border-slate-200"}`}>
-              Procesar Devolucion
+              Procesar Devolución
             </h2>
 
             <div className="space-y-3 mb-6">
@@ -286,17 +347,27 @@ export default function Loans() {
               <p className={isDark ? "text-slate-300" : "text-slate-700"}>
                 <span className="font-semibold">Libro:</span> {activeReturn.book}
               </p>
+              {activeReturn.isEstimate && activeReturn.daysLate > 0 && (
+                <p className={isDark ? "text-slate-300" : "text-slate-700"}>
+                  <span className="font-semibold">Días de atraso:</span> {activeReturn.daysLate}
+                </p>
+              )}
               <p className={isDark ? "text-slate-300" : "text-slate-700"}>
-                <span className="font-semibold">Multa acumulada:</span>{" "}
-                <span className={activeReturn.fine > 0 ? (isDark ? "text-red-400" : "text-red-600") + " font-bold" : (isDark ? "text-green-400" : "text-green-600") + " font-semibold"}>
-                  {money.format(activeReturn.fine)}
+                <span className="font-semibold">{activeReturn.isEstimate ? "Multa estimada:" : "Multa acumulada:"}</span>{" "}
+                <span className={(activeReturn.isEstimate ? activeReturn.estimatedFine : activeReturn.fine) > 0 ? (isDark ? "text-red-400" : "text-red-600") + " font-bold" : (isDark ? "text-green-400" : "text-green-600") + " font-semibold"}>
+                  {money.format(activeReturn.isEstimate ? activeReturn.estimatedFine : activeReturn.fine)}
                 </span>
+                {activeReturn.isEstimate && (
+                  <span className={`block text-xs mt-1 ${isDark ? "text-slate-500" : "text-slate-400"}`}>
+                    Estimado, puede variar según la fecha en la que confirmes la devolución.
+                  </span>
+                )}
               </p>
             </div>
 
             <div className="mb-6">
               <label className={`block text-sm font-semibold mb-2 ${isDark ? "text-slate-300" : "text-slate-700"}`}>
-                Estado fisico del libro al entregar:
+                Estado físico del libro al entregar:
               </label>
               <select
                 value={bookCondition}
@@ -305,8 +376,37 @@ export default function Loans() {
               >
                 <option value="Excelente">Excelente (Como nuevo)</option>
                 <option value="Bueno">Bueno (Signos de uso normales)</option>
-                <option value="Danado">Danado (Requiere penalizacion/reparacion)</option>
+                <option value="Dañado">Dañado (Requiere penalización/reparación)</option>
+                <option value="Perdido">Libro perdido (Paga costo de reposición)</option>
               </select>
+
+              {bookCondition === "Perdido" && (
+                <div className="mt-3">
+                  <label className={`block text-sm font-semibold mb-2 ${isDark ? "text-slate-300" : "text-slate-700"}`}>
+                    Costo de reposición (MXN)
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.5"
+                    value={replacementCost || ""}
+                    onChange={(e) => {
+                      setReplacementCost(Number(e.target.value));
+                      if (returnFormError) setReturnFormError("");
+                    }}
+                    placeholder="Ej. 350.00"
+                    className={`w-full px-3 py-2 rounded-lg border transition-colors ${
+                      isDark
+                        ? "bg-slate-800 border-slate-600 text-white focus:border-blue-500 focus:outline-none"
+                        : "bg-white border-slate-200 text-slate-900 focus:border-blue-500 focus:outline-none"
+                    }`}
+                  />
+                </div>
+              )}
+
+              {returnFormError && (
+                <p className={`mt-2 text-sm font-medium ${isDark ? "text-red-400" : "text-red-600"}`}>{returnFormError}</p>
+              )}
             </div>
 
             <div className="flex gap-3">
@@ -339,17 +439,17 @@ export default function Loans() {
 }
 
 function mapLoan(loan: any): Loan {
-  const dueDate = loan.dueDate ? new Date(loan.dueDate) : null;
-  const isOverdue = loan.status === "ACTIVE" && dueDate && dueDate < new Date();
+  const isOverdue = loan.status === "ACTIVE" && Boolean(loan.isOverdue);
 
   return {
     id: String(loan.id),
     userId: String(loan.userId ?? loan.user?.id ?? ""),
     bookId: String(loan.bookId ?? loan.book?.id ?? ""),
     student: loan.user?.name || loan.studentName || "Alumno sin nombre",
-    book: loan.book?.title || loan.bookTitle || "Libro sin titulo",
+    book: loan.book?.title || loan.bookTitle || "Libro sin título",
     loanDate: formatDate(loan.createdAt || loan.loanDate),
-    dueDate: formatDate(loan.dueDate),
+    dueDate: formatDueDate(loan.dueDate),
+    dueDateRaw: loan.dueDate || null,
     returnedDate: loan.returnDate ? formatDate(loan.returnDate) : null,
     fine: Number(loan.fineAmount || 0),
     status: loan.status === "RETURNED" ? "Devuelto" : isOverdue ? "Vencido" : "Activo",
@@ -362,9 +462,9 @@ function formatDate(value: string | null | undefined) {
   return new Date(value).toLocaleDateString("es-MX");
 }
 
-function rowClass(index: number, isDark: boolean) {
-  if (isDark) return index % 2 === 0 ? "bg-slate-900 hover:bg-slate-800" : "bg-slate-800/50 hover:bg-slate-800";
-  return index % 2 === 0 ? "bg-white hover:bg-slate-50" : "bg-slate-50 hover:bg-slate-100";
+function formatDueDate(value: string | null | undefined) {
+  if (!value) return "Sin fecha";
+  return new Date(value).toLocaleDateString("es-MX", { timeZone: "UTC" });
 }
 
 function statusClass(status: Loan["status"], isDark: boolean) {

@@ -13,6 +13,9 @@ const bookRoutes = require('./src/routes/bookRoutes');
 const loanRoutes = require('./src/routes/loanRoutes');
 const userRoutes = require('./src/routes/userRoutes');
 const tenantRoutes = require('./src/routes/tenantRoutes');
+const departmentRoutes = require('./src/routes/departmentRoutes');
+const billingRoutes = require('./src/routes/billingRoutes');
+const reportRoutes = require('./src/routes/reportRoutes');
 
 const app = express();
 
@@ -56,16 +59,9 @@ app.use('/api/books', bookRoutes);
 app.use('/api/loans', loanRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/tenants', tenantRoutes);
-
-app.get('/api/test-db', async (req, res) => {
-  try {
-    const tenants = await prisma.tenant.findMany({ orderBy: { createdAt: 'asc' } });
-    res.json({ success: true, tenants });
-  } catch (err) {
-    console.error('DB error:', err);
-    res.status(500).json({ success: false, error: String(err) });
-  }
-});
+app.use('/api/departments', departmentRoutes);
+app.use('/api/billing', billingRoutes);
+app.use('/api/reports', reportRoutes);
 
 // global error handler
 app.use((err, req, res, next) => {

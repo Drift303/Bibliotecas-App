@@ -11,6 +11,8 @@ interface BookFormProps {
     title: string;
     author: string;
     status: string;
+    locationHall?: string | null;
+    locationShelf?: string | null;
   };
   setFormData: React.Dispatch<
     React.SetStateAction<{
@@ -18,6 +20,8 @@ interface BookFormProps {
       title: string;
       author: string;
       status: string;
+      locationHall?: string | null;
+      locationShelf?: string | null;
     }>
   >;
   actionError: string;
@@ -39,6 +43,13 @@ export function BookForm({
   const [qrDataUrl, setQrDataUrl] = useState<string>("");
   const [codeFormat, setCodeFormat] = useState<"QR" | "BARCODE">("QR");
   const svgRef = useRef<SVGSVGElement | null>(null);
+
+  // Sección "¿Dónde está ubicado?": opcional y colapsada por defecto (ver README
+  // Auditoría Anual + Mapeo de Ubicación). Se expande sola si el libro que se está
+  // editando ya trae una ubicación capturada, para no esconder datos existentes.
+  const [showLocationSection, setShowLocationSection] = useState<boolean>(
+    Boolean(formData.locationHall || formData.locationShelf)
+  );
 
   useEffect(() => {
     if (formData.isbn && svgRef.current) {
@@ -409,6 +420,68 @@ export function BookForm({
             </div>
           )}
         </div>
+      </div>
+
+      {/* Sección 2 — Ubicación física (opcional, separada de los datos del libro) */}
+      <div
+        className={`mt-6 rounded-xl border ${
+          isDark ? "border-slate-700 bg-slate-800/30" : "border-slate-200 bg-slate-50"
+        }`}
+      >
+        <button
+          type="button"
+          onClick={() => setShowLocationSection((prev) => !prev)}
+          className={`w-full flex items-center justify-between px-4 py-3 text-left rounded-xl transition-colors ${
+            isDark ? "hover:bg-slate-800/60" : "hover:bg-slate-100"
+          }`}
+        >
+          <span className={`flex items-center gap-2 font-semibold text-sm ${isDark ? "text-white" : "text-slate-800"}`}>
+            📍 ¿Dónde está ubicado? <span className="font-normal text-xs text-slate-400">(opcional)</span>
+          </span>
+          <span className={`text-xs font-medium ${isDark ? "text-slate-400" : "text-slate-500"}`}>
+            {showLocationSection ? "Ocultar" : "Registrar ubicación ahora"}
+          </span>
+        </button>
+
+        {showLocationSection && (
+          <div className="px-4 pb-4 pt-1 grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div>
+              <label className={`block text-xs font-semibold uppercase tracking-wider mb-1 ${isDark ? "text-slate-400" : "text-slate-500"}`}>
+                Pasillo
+              </label>
+              <input
+                type="text"
+                placeholder="Ej. A, B, General..."
+                value={formData.locationHall ?? ""}
+                onChange={(e) => setFormData({ ...formData, locationHall: e.target.value })}
+                className={`w-full px-4 py-2 rounded-lg border transition-colors ${
+                  isDark
+                    ? "bg-slate-800 border-slate-600 text-white placeholder-slate-400 focus:border-blue-500 focus:outline-none"
+                    : "bg-white border-slate-200 text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none"
+                }`}
+              />
+            </div>
+            <div>
+              <label className={`block text-xs font-semibold uppercase tracking-wider mb-1 ${isDark ? "text-slate-400" : "text-slate-500"}`}>
+                Estante
+              </label>
+              <input
+                type="text"
+                placeholder="Ej. 1, A1..."
+                value={formData.locationShelf ?? ""}
+                onChange={(e) => setFormData({ ...formData, locationShelf: e.target.value })}
+                className={`w-full px-4 py-2 rounded-lg border transition-colors ${
+                  isDark
+                    ? "bg-slate-800 border-slate-600 text-white placeholder-slate-400 focus:border-blue-500 focus:outline-none"
+                    : "bg-white border-slate-200 text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none"
+                }`}
+              />
+            </div>
+            <p className={`md:col-span-2 text-xs ${isDark ? "text-slate-500" : "text-slate-400"}`}>
+              Si no la capturas ahora, el libro se guarda sin ubicación asignada y puede mapearse después.
+            </p>
+          </div>
+        )}
       </div>
 
       <div className="flex gap-3 mt-8">

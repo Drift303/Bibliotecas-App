@@ -3,13 +3,14 @@ import api from "../api";
 import { useTheme } from "../context/ThemeContext";
 import LogoutButton from "../components/LogoutButton";
 import { ThemeToggleButton } from "../components/ui/ThemeToggleButton";
-import { Plus, X, Copy, Check, AlertCircle, UserPlus, HelpCircle, ChevronDown } from "lucide-react";
+import { Plus, X, Copy, Check, AlertCircle, UserPlus, HelpCircle, ChevronDown, Users, Trash2 } from "lucide-react";
 
 interface School {
   id: string;
   name: string;
   emailDomain: string;
   status: "ACTIVE" | "SUSPENDED";
+  type: "SCHOOL" | "PUBLIC_LIBRARY";
 }
 
 interface TempPasswordModal {
@@ -17,6 +18,13 @@ interface TempPasswordModal {
   librarianName: string;
   email: string;
   tempPassword: string;
+}
+
+interface Librarian {
+  id: string;
+  name: string;
+  email: string;
+  createdAt: string;
 }
 
 export default function Schools() {
@@ -29,9 +37,11 @@ export default function Schools() {
   const [statusMessage, setStatusMessage] = useState("");
   const [statusType, setStatusType] = useState<"ok" | "error" | "info">("info");
 
-  const [showNewSchool, setShowNewSchool] = useState(false);
+ const [showNewSchool, setShowNewSchool] = useState(false);
   const [newSchoolName, setNewSchoolName] = useState("");
   const [newSchoolDomain, setNewSchoolDomain] = useState("");
+  const [noOwnDomain, setNoOwnDomain] = useState(false);
+  const [newSchoolType, setNewSchoolType] = useState<"SCHOOL" | "PUBLIC_LIBRARY">("SCHOOL");
   const [newSchoolError, setNewSchoolError] = useState("");
   const [savingSchool, setSavingSchool] = useState(false);
 
@@ -41,11 +51,21 @@ export default function Schools() {
   const [librarianError, setLibrarianError] = useState("");
   const [savingLibrarian, setSavingLibrarian] = useState(false);
 
+  const [manageSchoolId, setManageSchoolId] = useState<string | null>(null);
+  const [librarians, setLibrarians] = useState<Librarian[]>([]);
+  const [loadingLibrarians, setLoadingLibrarians] = useState(false);
+  const [librariansError, setLibrariansError] = useState("");
+  const [deletingLibrarianId, setDeletingLibrarianId] = useState<string | null>(null);
+
   const [tempPasswordModal, setTempPasswordModal] = useState<TempPasswordModal | null>(null);
   const [copied, setCopied] = useState(false);
 
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [showRules, setShowRules] = useState(false);
+
+  const [deleteTargetSchool, setDeleteTargetSchool] = useState<School | null>(null);
+  const [deletingSchool, setDeletingSchool] = useState(false);
+  const [deleteSchoolError, setDeleteSchoolError] = useState("");
 
   const loadSchools = async () => {
     setLoading(true);
@@ -70,21 +90,79 @@ export default function Schools() {
     loadSchools();
   }, []);
 
-  const resetNewSchoolForm = () => {
+ const resetNewSchoolForm = () => {
     setNewSchoolName("");
     setNewSchoolDomain("");
+    setNoOwnDomain(false);
+    setNewSchoolType("SCHOOL");
     setNewSchoolError("");
   };
 
+  // Genera un dominio sintético único (no real) a partir del nombre del plantel,
+  // para bibliotecas públicas que no tienen dominio de correo institucional propio.
+  const slugify = (value: string) =>
+    value
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "") // quita acentos
+      .replace(/[^a-z0-9\s-]/g, "") // quita símbolos raros
+      .trim()
+      .replace(/\s+/g, "-");
+
+  const buildSyntheticDomain = (name: string, suffix?: number) => {
+    const slug = slugify(name) || "biblioteca";
+    return suffix ? `${slug}-${suffix}.bibliointeligente.local` : `${slug}.bibliointeligente.local`;
+  };
+
   const handleCreateSchool = async () => {
-    if (!newSchoolName.trim() || !newSchoolDomain.trim()) {
+    if (!newSchoolName.trim()) {
+      setNewSchoolError("Completa el nombre del plantel.");
+      return;
+    }
+    if (!noOwnDomain && !newSchoolDomain.trim()) {
       setNewSchoolError("Completa el nombre y el dominio.");
       return;
     }
     setNewSchoolError("");
     setSavingSchool(true);
     try {
-      await api.post("/tenants", { name: newSchoolName.trim(), emailDomain: newSchoolDomain.trim() });
+      if (noOwnDomain) {
+        // Dominio sintético: se genera y se reintenta con sufijo si choca.
+        // El type SIEMPRE viene del selector de arriba, nunca se infiere de esto.
+        const maxAttempts = 25;
+        let lastError = "";
+        let created = false;
+        for (let attempt = 0; attempt < maxAttempts; attempt++) {
+          const emailDomain = buildSyntheticDomain(newSchoolName, attempt === 0 ? undefined : attempt + 1);
+          try {
+            await api.post("/tenants", {
+              name: newSchoolName.trim(),
+              emailDomain,
+              type: newSchoolType,
+            });
+            created = true;
+            break;
+          } catch (err: any) {
+            const message = err?.response?.data?.error || "";
+            if (message.includes("dominio") && message.includes("registrado")) {
+              lastError = message;
+              continue; // choque de dominio: probamos el siguiente sufijo
+            }
+            throw err;
+          }
+        }
+        if (!created) {
+          setNewSchoolError(lastError || "No se pudo generar un dominio disponible, intenta de nuevo.");
+          setSavingSchool(false);
+          return;
+        }
+      } else {
+        await api.post("/tenants", {
+          name: newSchoolName.trim(),
+          emailDomain: newSchoolDomain.trim(),
+          type: newSchoolType,
+        });
+      }
       setShowNewSchool(false);
       resetNewSchoolForm();
       await loadSchools();
@@ -134,6 +212,9 @@ export default function Schools() {
         });
       }
       setLibrarianTargetId(null);
+      if (manageSchoolId === librarianTargetId) {
+        await loadLibrarians(librarianTargetId);
+      }
    } catch (err: any) {
       const message = err?.response?.data?.error || "";
       if (message.includes("dominio")) {
@@ -145,6 +226,53 @@ export default function Schools() {
       }
     } finally {
       setSavingLibrarian(false);
+    }
+  };
+
+  const openManageLibrarians = async (schoolId: string) => {
+    setManageSchoolId(schoolId);
+    await loadLibrarians(schoolId);
+  };
+
+  const loadLibrarians = async (schoolId: string) => {
+    setLoadingLibrarians(true);
+    setLibrariansError("");
+    try {
+      const res = await api.get(`/tenants/${schoolId}/librarian`);
+      setLibrarians(Array.isArray(res.data.data) ? res.data.data : []);
+    } catch (err) {
+      setLibrarians([]);
+      setLibrariansError("No se pudo cargar la lista de bibliotecarios.");
+    } finally {
+      setLoadingLibrarians(false);
+    }
+  };
+
+  const handleDeleteLibrarian = async (schoolId: string, librarianId: string) => {
+    setDeletingLibrarianId(librarianId);
+    try {
+      await api.delete(`/tenants/${schoolId}/librarian/${librarianId}`);
+      await loadLibrarians(schoolId);
+    } catch (err: any) {
+      const message = err?.response?.data?.error || "No se pudo eliminar al bibliotecario.";
+      setLibrariansError(message);
+    } finally {
+      setDeletingLibrarianId(null);
+    }
+  };
+
+  const handleDeleteSchool = async () => {
+    if (!deleteTargetSchool) return;
+    setDeletingSchool(true);
+    setDeleteSchoolError("");
+    try {
+      await api.delete(`/tenants/${deleteTargetSchool.id}`);
+      setDeleteTargetSchool(null);
+      await loadSchools();
+    } catch (err: any) {
+      setDeleteSchoolError(err?.response?.data?.error || "No se pudo eliminar el plantel.");
+    } finally {
+      setDeletingSchool(false);
     }
   };
 
@@ -234,6 +362,7 @@ export default function Schools() {
                 <li>· <span className={textPrimary}>Nombre:</span> el nombre visible del plantel, sin restricción de formato.</li>
                 <li>· <span className={textPrimary}>Dominio:</span> debe tener formato de dominio real (ej. <code>escuela.edu.mx</code>).</li>
                 <li>· El dominio debe ser único — no puede repetirse entre planteles.</li>
+                <li>· Para bibliotecas públicas sin dominio propio, activa el toggle correspondiente: el sistema genera un dominio sintético único automáticamente.</li>
                 <li>· El plantel se crea siempre en estado <span className={textPrimary}>Activo</span>.</li>
               </ul>
             </div>
@@ -261,9 +390,10 @@ export default function Schools() {
       <div className={`rounded-lg border overflow-hidden ${surface} ${border}`}>
         <table className="w-full text-sm text-left">
           <thead className={`${textSecondary} text-xs uppercase tracking-wide border-b ${border}`}>
-            <tr>
+          <tr>
               <th className="px-5 py-3 font-medium">Plantel</th>
               <th className="px-5 py-3 font-medium">Dominio</th>
+              <th className="px-5 py-3 font-medium">Tipo</th>
               <th className="px-5 py-3 font-medium">Estado</th>
               <th className="px-5 py-3 font-medium text-right">Acciones</th>
             </tr>
@@ -271,13 +401,13 @@ export default function Schools() {
           <tbody className={`divide-y ${border}`}>
             {loading ? (
               <tr>
-                <td colSpan={4} className={`px-5 py-8 text-center ${textSecondary}`}>
+                <td colSpan={5} className={`px-5 py-8 text-center ${textSecondary}`}>
                   Cargando planteles...
                 </td>
               </tr>
             ) : schools.length === 0 ? (
               <tr>
-                <td colSpan={4} className={`px-5 py-8 text-center ${textSecondary}`}>
+                <td colSpan={5} className={`px-5 py-8 text-center ${textSecondary}`}>
                   No hay planteles registrados.
                 </td>
               </tr>
@@ -290,6 +420,19 @@ export default function Schools() {
                     <td className="px-5 py-3.5 font-medium">{school.name}</td>
                     <td className={`px-5 py-3.5 ${textSecondary}`}>{school.emailDomain}</td>
                     <td className="px-5 py-3.5">
+                      <span
+                        className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${
+                          school.type === "PUBLIC_LIBRARY"
+                            ? isDark
+                              ? "bg-[#0A84FF]/15 text-[#0A84FF]"
+                              : "bg-[#0071E3]/10 text-[#0071E3]"
+                            : textSecondary
+                        }`}
+                      >
+                        {school.type === "PUBLIC_LIBRARY" ? "Biblioteca pública" : "Escuela"}
+                      </span>
+                    </td>
+                    <td className="px-5 py-3.5">
                       <span className="inline-flex items-center gap-1.5">
                         <span
                           className={`w-2 h-2 rounded-full ${isActive ? "bg-[#34C759]" : "bg-[#FF3B30]"}`}
@@ -299,6 +442,15 @@ export default function Schools() {
                     </td>
                     <td className="px-5 py-3.5">
                       <div className="flex items-center justify-end gap-2">
+                        <button
+                          onClick={() => openManageLibrarians(school.id)}
+                          className={`p-1.5 rounded-md transition-colors ${textSecondary} ${
+                            isDark ? "hover:bg-[#3A3A3C] hover:text-white" : "hover:bg-[#F0F0F2] hover:text-[#1D1D1F]"
+                          }`}
+                          title="Ver bibliotecarios"
+                        >
+                          <Users size={16} />
+                        </button>
                         <button
                           onClick={() => openLibrarianModal(school.id)}
                           className={`p-1.5 rounded-md transition-colors ${textSecondary} ${
@@ -315,6 +467,21 @@ export default function Schools() {
                           className={`${flatButton} ${isOwn ? "opacity-40 cursor-not-allowed" : ""}`}
                         >
                           {togglingId === school.id ? "..." : isActive ? "Suspender" : "Activar"}
+                        </button>
+                        <button
+                          onClick={() => {
+                            setDeleteTargetSchool(school);
+                            setDeleteSchoolError("");
+                          }}
+                          disabled={isOwn}
+                          title={isOwn ? "No puedes eliminar tu propio plantel" : "Eliminar plantel"}
+                          className={`p-1.5 rounded-md transition-colors ${
+                            isOwn
+                              ? "opacity-40 cursor-not-allowed text-[#8E8E93]"
+                              : `${textSecondary} hover:text-[#FF3B30] ${isDark ? "hover:bg-[#3A3A3C]" : "hover:bg-[#F0F0F2]"}`
+                          }`}
+                        >
+                          <Trash2 size={16} />
                         </button>
                       </div>
                     </td>
@@ -343,7 +510,32 @@ export default function Schools() {
               </p>
             )}
 
-            <div className="space-y-3">
+           <div className="space-y-3">
+              {/* Tipo de plantel — decisión independiente del dominio */}
+              <div>
+                <p className={`text-xs font-medium mb-1.5 ${textSecondary}`}>Tipo de plantel</p>
+                <div className="flex gap-4">
+                  <label className={`flex items-center gap-1.5 text-sm ${textPrimary}`}>
+                    <input
+                      type="radio"
+                      name="newSchoolType"
+                      checked={newSchoolType === "SCHOOL"}
+                      onChange={() => setNewSchoolType("SCHOOL")}
+                    />
+                    Escuela
+                  </label>
+                  <label className={`flex items-center gap-1.5 text-sm ${textPrimary}`}>
+                    <input
+                      type="radio"
+                      name="newSchoolType"
+                      checked={newSchoolType === "PUBLIC_LIBRARY"}
+                      onChange={() => setNewSchoolType("PUBLIC_LIBRARY")}
+                    />
+                    Biblioteca pública
+                  </label>
+                </div>
+              </div>
+
               <input
                 type="text"
                 placeholder="Nombre del plantel"
@@ -351,13 +543,31 @@ export default function Schools() {
                 onChange={(e) => setNewSchoolName(e.target.value)}
                 className={inputClass}
               />
-              <input
-                type="text"
-                placeholder="Dominio de correo (ej. escuela.edu.mx)"
-                value={newSchoolDomain}
-                onChange={(e) => setNewSchoolDomain(e.target.value)}
-                className={inputClass}
-              />
+              {!noOwnDomain && (
+                <input
+                  type="text"
+                  placeholder="Dominio de correo (ej. escuela.edu.mx)"
+                  value={newSchoolDomain}
+                  onChange={(e) => setNewSchoolDomain(e.target.value)}
+                  className={inputClass}
+                />
+              )}
+
+              <label className={`flex items-start gap-2 text-sm ${textSecondary}`}>
+                <input
+                  type="checkbox"
+                  checked={noOwnDomain}
+                  onChange={(e) => setNoOwnDomain(e.target.checked)}
+                  className="mt-0.5"
+                />
+                Esta institución no tiene dominio de correo propio
+              </label>
+
+              {noOwnDomain && (
+                <p className={`text-xs ${textSecondary}`}>
+                  Se generará un dominio único automáticamente, no es necesario capturarlo.
+                </p>
+              )}
             </div>
 
             <div className="flex gap-2 mt-5">
@@ -419,6 +629,106 @@ export default function Schools() {
                 {savingLibrarian ? "Creando..." : "Crear bibliotecario"}
               </button>
               <button onClick={() => setLibrarianTargetId(null)} className={flatButton}>
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: gestionar bibliotecarios del plantel */}
+      {manageSchoolId && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-6 z-50">
+          <div className={`rounded-lg w-full max-w-md p-5 border ${surface} ${border}`}>
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h2 className="text-base font-semibold">Bibliotecarios</h2>
+                <p className={`text-xs mt-0.5 ${textSecondary}`}>
+                  {schools.find((s) => s.id === manageSchoolId)?.name} · {librarians.length}{" "}
+                  {librarians.length === 1 ? "bibliotecario" : "bibliotecarios"}
+                </p>
+              </div>
+              <button onClick={() => setManageSchoolId(null)} className={textSecondary}>
+                <X size={18} />
+              </button>
+            </div>
+
+            {librariansError && (
+              <p className="text-sm text-[#FF3B30] mb-3 flex items-center gap-1.5">
+                <AlertCircle size={14} /> {librariansError}
+              </p>
+            )}
+
+            {loadingLibrarians ? (
+              <p className={`text-sm text-center py-6 ${textSecondary}`}>Cargando...</p>
+            ) : librarians.length === 0 ? (
+              <p className={`text-sm text-center py-6 ${textSecondary}`}>
+                Este plantel no tiene bibliotecarios registrados.
+              </p>
+            ) : (
+              <div className={`rounded-md border divide-y ${border}`}>
+                {librarians.map((lib) => (
+                  <div key={lib.id} className="flex items-center justify-between px-3.5 py-2.5">
+                    <div className="min-w-0">
+                      <p className={`text-sm font-medium truncate ${textPrimary}`}>{lib.name}</p>
+                      <p className={`text-xs truncate ${textSecondary}`}>{lib.email}</p>
+                    </div>
+                    <button
+                      onClick={() => handleDeleteLibrarian(manageSchoolId, lib.id)}
+                      disabled={deletingLibrarianId === lib.id}
+                      title="Eliminar bibliotecario"
+                      className={`p-1.5 rounded-md transition-colors ${textSecondary} hover:text-[#FF3B30] ${
+                        isDark ? "hover:bg-[#3A3A3C]" : "hover:bg-[#F0F0F2]"
+                      }`}
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="flex gap-2 mt-5">
+              <button onClick={() => setManageSchoolId(null)} className={flatButton}>
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: confirmar eliminación de plantel — pide escribir el nombre porque es destructivo */}
+      {deleteTargetSchool && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-6 z-50">
+          <div className={`rounded-lg w-full max-w-sm p-5 border ${surface} ${border}`}>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-base font-semibold text-[#FF3B30]">Eliminar plantel</h2>
+              <button onClick={() => setDeleteTargetSchool(null)} className={textSecondary}>
+                <X size={18} />
+              </button>
+            </div>
+
+            <p className={`text-sm mb-3 ${textSecondary}`}>
+              Vas a eliminar <span className={textPrimary}>{deleteTargetSchool.name}</span>. Sus datos
+              (alumnos, bibliotecarios, libros, préstamos) no se borran físicamente, pero el plantel deja
+              de aparecer y de poder usarse. Esta acción no se puede deshacer desde la interfaz.
+            </p>
+
+            {deleteSchoolError && (
+              <p className="text-sm text-[#FF3B30] mb-3 flex items-center gap-1.5">
+                <AlertCircle size={14} /> {deleteSchoolError}
+              </p>
+            )}
+
+            <div className="flex gap-2 mt-2">
+              <button
+                onClick={handleDeleteSchool}
+                disabled={deletingSchool}
+                className="px-3.5 py-1.5 rounded-md text-sm font-medium border border-[#FF3B30] text-[#FF3B30] hover:bg-[#FF3B30]/10 transition-colors"
+              >
+                {deletingSchool ? "Eliminando..." : "Sí, eliminar"}
+              </button>
+              <button onClick={() => setDeleteTargetSchool(null)} className={flatButton}>
                 Cancelar
               </button>
             </div>

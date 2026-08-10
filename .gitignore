@@ -66,3 +66,4 @@ coverage/
 coverage-final.json
 .vite/
 cookies.txt
+backup.dump

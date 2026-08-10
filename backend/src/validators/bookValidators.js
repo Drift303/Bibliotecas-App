@@ -3,8 +3,11 @@ const { z } = require('zod');
 const createBookSchema = z.object({
   title: z.string().min(1),
   author: z.string().min(1),
-  locationHall: z.string().min(1),
-  locationShelf: z.string().min(1),
+  locationHall: z.string().min(1).nullable().optional(),
+  locationShelf: z.string().min(1).nullable().optional(),
+  locationRow: z.string().min(1).nullable().optional(),
+  locationColumn: z.string().min(1).nullable().optional(),
+  storageLocation: z.string().min(1).nullable().optional(),
   isbn: z.string().optional(),
   publisher: z.string().optional(),
   statusPhysical: z.enum(['GOOD', 'DAMAGED', 'LOST', 'DISCARDED']).optional(),
