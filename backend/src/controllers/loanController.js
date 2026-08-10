@@ -85,7 +85,7 @@ const createLoan = async (req, res) => {
       userId,
       bookId,
       status: 'ACTIVE',
-      dueDate: dueDate ? new Date(dueDate) : undefined,
+     dueDate: dueDate ? toMxMidnight(dueDate) : undefined,
       loanType: loanType || 'HOME',
       // Se guarda tal cual lo seleccionó el bibliotecario en ese momento — es
       // una "foto" histórica, no se vuelve a leer del perfil del alumno después.
@@ -184,7 +184,8 @@ const MX_UTC_OFFSET_HOURS = 6;
 const getMxTodayStart = () => {
   const nowUtc = new Date();
   const mxNow = new Date(nowUtc.getTime() - MX_UTC_OFFSET_HOURS * 60 * 60 * 1000);
-  return new Date(Date.UTC(mxNow.getUTCFullYear(), mxNow.getUTCMonth(), mxNow.getUTCDate()));
+  const mxMidnightUtc = Date.UTC(mxNow.getUTCFullYear(), mxNow.getUTCMonth(), mxNow.getUTCDate());
+  return new Date(mxMidnightUtc + MX_UTC_OFFSET_HOURS * 60 * 60 * 1000);
 };
 
 const getTodayRange = () => {
@@ -202,6 +203,16 @@ const isPastDueDay = (dueDate) => {
   if (!dueDate) return false;
   return getMxTodayStart().getTime() > new Date(dueDate).getTime();
 };
+
+// Convierte "AAAA-MM-DD" (de un <input type="date">) a medianoche real de
+// México, como instante UTC — evita que new Date("2026-08-09") se lea como
+// medianoche UTC, que son 6 horas antes de la medianoche real en México.
+const toMxMidnight = (dateInput) => {
+  const d = new Date(dateInput);
+  const utcMidnight = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+  return new Date(utcMidnight + MX_UTC_OFFSET_HOURS * 60 * 60 * 1000);
+};
+
 
 // Determina el correo utilizable para notificar a un lector, según tipo de tenant.
 // Escuela: siempre el correo institucional (user.email). Biblioteca pública: solo
