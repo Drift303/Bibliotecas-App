@@ -1,101 +1,46 @@
-const nodemailer = require('nodemailer');
-const dns = require('dns');
-const { promisify } = require('util');
+const { BrevoClient } = require('@getbrevo/brevo');
 
-const resolve4 = promisify(dns.resolve4);
-
-const GMAIL_HOST = 'smtp.gmail.com';
-const GMAIL_PORT = 465;
-
-// Timeouts explícitos: sin esto, un fallo de conexión/autenticación con Gmail
-// puede quedarse colgado mucho tiempo (SMTP no siempre falla rápido). Si eso
-// pasa dentro de un loop como remindAllDueToday, la petición completa puede
-// superar el timeout del proxy (p. ej. Railway) antes de que Express alcance
-// a responder — el navegador entonces reporta un error de "CORS" genérico,
-// aunque el problema real es que la respuesta nunca llegó a tiempo.
-const TRANSPORT_TIMEOUTS = {
-  connectionTimeout: 10_000,
-  greetingTimeout: 10_000,
-  socketTimeout: 15_000,
+// --- Por qué Brevo (API HTTPS) y no SMTP directo (nodemailer + Gmail) ---
+//
+// Se intentó mandar los correos por SMTP directo a smtp.gmail.com (puertos
+// 465/587) desde nodemailer. En Railway esas conexiones fallaban siempre:
+// primero con ENETUNREACH (el contenedor no tiene salida IPv6 funcional, y
+// Gmail resuelve tanto a IPv4 como IPv6), y después de forzar IPv4 a mano
+// (resolviendo la IP nosotros mismos y conectando por IP directa), el
+// resultado fue "Connection timeout" — es decir, Railway bloquea de plano
+// las conexiones salientes a los puertos SMTP (25/465/587), algo común en
+// plataformas PaaS como medida antispam.
+//
+// La solución real es dejar de usar SMTP y mandar los correos por una API
+// HTTPS (puerto 443, nunca bloqueado). BREVO_API_KEY y la dependencia
+// @getbrevo/brevo ya estaban en el proyecto (ver .env.example) pero nunca se
+// conectaron al código — esto termina esa migración.
+const BREVO_SENDER = {
+  name: 'Biblioteca Inteligente',
+  // Debe ser un remitente verificado/autorizado en tu cuenta de Brevo
+  // (Brevo → Senders, Domains & Dedicated IPs). Si EMAIL_USER no está
+  // verificado ahí, Brevo rechazará el envío.
+  email: process.env.EMAIL_USER,
 };
 
-// --- IPv4 forzado a nivel de socket, no de "opciones que nodemailer podría
-// o no respetar" ---
-//
-// Railway no tiene salida IPv6 funcional: smtp.gmail.com resuelve tanto a
-// IPv4 como a IPv6, y cuando le toca IPv6 la conexión falla con
-// "ENETUNREACH ...:465" o se cuelga.
-//
-// Ya se probaron dos formas "declarativas" de forzar IPv4 (`family: 4` y un
-// `lookup` personalizado pasados como opciones a nodemailer.createTransport)
-// y NINGUNA de las dos tuvo efecto en producción — nodemailer/smtp-connection
-// no las está usando para resolver la conexión real, así que confiar en esas
-// opciones fue un callejón sin salida.
-//
-// La única forma 100% infalible es resolver la IP nosotros mismos ANTES de
-// crear la conexión, usando dns.resolve4 (que por definición SOLO devuelve
-// registros A / IPv4, nunca puede devolver una IPv6), y pasarle esa IP
-// literal a nodemailer como `host`. Una conexión TCP a una IP literal no
-// puede "convertirse" en IPv6 por sí sola.
-//
-// Como nos conectamos por IP y no por nombre, el certificado TLS de Gmail
-// (emitido para "smtp.gmail.com") no coincidiría con la IP durante el
-// handshake — por eso se fija `tls.servername` al hostname real, para que la
-// validación del certificado se siga haciendo contra el nombre correcto
-// (esto es el equivalente a fijar el SNI manualmente).
-let cachedTransporterPromise = null;
-
-async function buildTransporter() {
-  let host = GMAIL_HOST;
-  try {
-    const addresses = await resolve4(GMAIL_HOST);
-    if (addresses && addresses.length > 0) {
-      host = addresses[0];
-    }
-  } catch (err) {
-    console.error('[emailService] No se pudo resolver IPv4 de smtp.gmail.com, se intentará con el hostname directo:', err.message);
+let cachedClient = null;
+function getBrevoClient() {
+  if (!process.env.BREVO_API_KEY) {
+    throw new Error('BREVO_API_KEY no está configurada');
   }
-
-  console.log(`[emailService] Transporter Gmail inicializado, conectando por IP fija: ${host} (servername=${GMAIL_HOST})`);
-
-  return nodemailer.createTransport({
-    host,
-    port: GMAIL_PORT,
-    secure: true,
-    auth: {
-      user: process.env.EMAIL_USER,
-      pass: process.env.EMAIL_PASS,
-    },
-    tls: {
-      servername: GMAIL_HOST,
-    },
-    ...TRANSPORT_TIMEOUTS,
-  });
-}
-
-// El transporter se resuelve una sola vez (se cachea la promesa) para no
-// hacer una consulta DNS en cada correo. Si un envío falla, se invalida el
-// cache para que el siguiente intento vuelva a resolver la IP desde cero
-// (por si la IP que teníamos cacheada dejó de responder — Gmail balancea
-// tráfico entre varias IPs).
-function getTransporter() {
-  if (!cachedTransporterPromise) {
-    cachedTransporterPromise = buildTransporter();
+  if (!cachedClient) {
+    cachedClient = new BrevoClient({ apiKey: process.env.BREVO_API_KEY });
   }
-  return cachedTransporterPromise;
-}
-
-function invalidateTransporterCache() {
-  cachedTransporterPromise = null;
+  return cachedClient;
 }
 
 const sendTempPasswordEmail = async ({ name, email, tempPassword, credentialImage }) => {
   try {
-    const mailOptions = {
-      from: `"Biblioteca Inteligente" <${process.env.EMAIL_USER}>`,
-      to: email,
+    const brevo = getBrevoClient();
+
+    const payload = {
       subject: 'Tu acceso y credencial de Biblioteca Inteligente',
-      html: `
+      htmlContent: `
         <div style="font-family: Arial, sans-serif; max-width: 500px; margin: 0 auto; padding: 24px;">
           <h2 style="color: #1E3A5F;">Bienvenido/a, ${name}</h2>
           <p>Has sido registrado en el sistema de Biblioteca Inteligente.</p>
@@ -110,37 +55,36 @@ const sendTempPasswordEmail = async ({ name, email, tempPassword, credentialImag
           <p style="color: #C53030; font-size: 13px;">⚠️ Guarda esta contraseña, no se volverá a enviar.</p>
         </div>
       `,
+      sender: BREVO_SENDER,
+      to: [{ email, name }],
     };
 
     // Agregar adjunto si viene la imagen en base64
     if (credentialImage) {
       const base64Data = credentialImage.split(';base64,').pop();
-      mailOptions.attachments = [
+      payload.attachment = [
         {
-          filename: `Credencial_${name.replace(/\s+/g, '_')}.png`,
+          name: `Credencial_${name.replace(/\s+/g, '_')}.png`,
           content: base64Data,
-          encoding: 'base64',
         },
       ];
     }
 
-    const transporter = await getTransporter();
-    const info = await transporter.sendMail(mailOptions);
+    const info = await brevo.transactionalEmails.sendTransacEmail(payload);
     return { success: true, data: info };
   } catch (err) {
-    console.error('Nodemailer error:', err.message);
-    invalidateTransporterCache();
+    console.error('Brevo error:', err?.body || err.message || err);
     return { success: false, error: err };
   }
 };
 
 const sendLoanDueReminderEmail = async ({ name, email, bookTitle, dueDate }) => {
   try {
-    const mailOptions = {
-      from: `"Biblioteca Inteligente" <${process.env.EMAIL_USER}>`,
-      to: email,
+    const brevo = getBrevoClient();
+
+    const info = await brevo.transactionalEmails.sendTransacEmail({
       subject: 'Recordatorio de Préstamo Vencido',
-      html: `
+      htmlContent: `
         <div style="font-family: Arial, sans-serif; max-width: 500px; margin: 0 auto; padding: 24px;">
           <h2 style="color: #1E3A5F;">Hola, ${name}</h2>
           <p>Te recordamos que tienes un préstamo vencido en la biblioteca.</p>
@@ -151,14 +95,12 @@ const sendLoanDueReminderEmail = async ({ name, email, bookTitle, dueDate }) => 
           <p>Por favor, devuelve el libro a la brevedad para evitar multas adicionales.</p>
         </div>
       `,
-    };
-
-    const transporter = await getTransporter();
-    const info = await transporter.sendMail(mailOptions);
+      sender: BREVO_SENDER,
+      to: [{ email, name }],
+    });
     return { success: true, data: info };
   } catch (err) {
-    console.error('Nodemailer error:', err.message);
-    invalidateTransporterCache();
+    console.error('Brevo error:', err?.body || err.message || err);
     return { success: false, error: err };
   }
 };
