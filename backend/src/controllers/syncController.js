@@ -1,7 +1,22 @@
 const prisma = require('../config/prismaClient');
 const { syncLoansSchema } = require('../validators/syncValidators');
 
-const FINE_PER_DAY = 5.0;
+const FINE_PER_DAY_FALLBACK = 5.0; // MXN — solo se usa si el tenant no tiene finePerDay configurado
+
+// Mismo offset y misma lógica que loanController.js — México central (UTC-6).
+const MX_UTC_OFFSET_HOURS = 6;
+
+// Convierte una fecha tipo "AAAA-MM-DD" (como la que manda el <input type="date">
+// del formulario offline) a medianoche real de México, como instante UTC.
+// Sin esto, new Date("2026-08-09") se interpreta como medianoche UTC — 6 horas
+// antes de la medianoche real en México — y el préstamo queda marcado "Vencido"
+// horas antes de que en realidad lo esté.
+const toMxMidnight = (dateInput) => {
+  if (!dateInput) return undefined;
+  const d = new Date(dateInput);
+  const utcMidnight = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+  return new Date(utcMidnight + MX_UTC_OFFSET_HOURS * 60 * 60 * 1000);
+};
 
 const syncLoans = async (req, res) => {
   try {
@@ -10,6 +25,12 @@ const syncLoans = async (req, res) => {
 
     const { tenantId, transactions } = parsed.data;
     if (req.tenantId !== tenantId) return res.status(403).json({ error: 'Tenant mismatch' });
+
+    // Igual que en loanController.js: la multa por día usa lo que el plantel
+    // configuró, no un valor fijo — si no tiene nada configurado, usa el fallback.
+    const tenant = await prisma.tenant.findUnique({ where: { id: tenantId } });
+    if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
+    const finePerDay = tenant.finePerDay ?? FINE_PER_DAY_FALLBACK;
 
     const results = [];
 
@@ -25,7 +46,7 @@ const syncLoans = async (req, res) => {
           }
 
           const returnDate = item.returnDate ? new Date(item.returnDate) : new Date();
-          const fineAmount = calculateFine(loan.dueDate, returnDate);
+          const fineAmount = calculateFine(loan.dueDate, returnDate, finePerDay);
 
           await tx.loan.update({
             where: { id: loan.id },
@@ -60,7 +81,7 @@ const syncLoans = async (req, res) => {
             userId: item.userId,
             bookId: item.bookId,
             loanDate: item.loanDate ? new Date(item.loanDate) : undefined,
-            dueDate: item.dueDate ? new Date(item.dueDate) : undefined,
+            dueDate: toMxMidnight(item.dueDate),
             status: 'ACTIVE',
           },
         });
@@ -100,10 +121,10 @@ async function findLoanForReturn(tx, tenantId, item) {
   });
 }
 
-function calculateFine(dueDate, returnDate) {
+function calculateFine(dueDate, returnDate, finePerDay) {
   if (!dueDate || returnDate <= dueDate) return 0;
   const msPerDay = 1000 * 60 * 60 * 24;
-  return Math.ceil((returnDate - dueDate) / msPerDay) * FINE_PER_DAY;
+  return Math.ceil((returnDate - dueDate) / msPerDay) * finePerDay;
 }
 
 module.exports = { syncLoans };
