@@ -6,7 +6,7 @@ interface InventoryHeaderProps {
   statusMessage: string;
   statusType: "ok" | "error" | "info";
   uploading: boolean;
-  fileInputRef: React.RefObject<HTMLInputElement>;
+  fileInputRef: React.RefObject<HTMLInputElement | null>;
   onFileUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
   onOpenScanner: () => void;
   onAddBook: () => void;

@@ -3,6 +3,7 @@ import api from "../api";
 import BookCard from "../cards/BookCard";
 import LogoutButton from "../components/LogoutButton";
 import { ThemeToggleButton } from "../components/ui/ThemeToggleButton";
+import { readCache, saveCache } from "../offline/db";
 import { 
   BookX,
   X,
@@ -64,6 +65,7 @@ export default function Catalog() {
         const normalizedBooks = (Array.isArray(rawBooks) ? rawBooks : []).map(mapBook);
 
         setBooks(normalizedBooks);
+        await saveCache("studentCatalog:books", normalizedBooks);
         setStatusType("ok");
         setStatusMessage(
           normalizedBooks.length > 0
@@ -71,12 +73,19 @@ export default function Catalog() {
             : "Conectado al servidor. No hay libros disponibles todavia."
         );
       } catch (err: any) {
-        setBooks([]);
-        setStatusType("error");
-        const detail = err?.response?.status
-          ? `Error ${err.response.status} al contactar el servidor.`
-          : "No se pudo conectar con el servidor. Revisa tu conexion.";
-        setStatusMessage(detail);
+        const cachedBooks = await readCache<Book[]>("studentCatalog:books");
+        if (cachedBooks) {
+          setBooks(cachedBooks);
+          setStatusType("info");
+          setStatusMessage("Modo offline: mostrando el ultimo catalogo guardado.");
+        } else {
+          setBooks([]);
+          setStatusType("error");
+          const detail = err?.response?.status
+            ? `Error ${err.response.status} al contactar el servidor.`
+            : "No se pudo conectar con el servidor. Revisa tu conexion.";
+          setStatusMessage(detail);
+        }
         console.error("Error cargando libros:", err);
       } finally {
         setLoadingBooks(false);
@@ -88,13 +97,21 @@ export default function Catalog() {
       try {
         const res = await api.get("/loans");
         const data = Array.isArray(res.data?.data) ? res.data.data : [];
-        setLoans(data.map(mapLoan));
+        const normalizedLoans = data.map(mapLoan);
+        setLoans(normalizedLoans);
+        await saveCache("studentCatalog:loans", normalizedLoans);
         setLoanStatusMessage("");
       } catch (err) {
-        setLoans([]);
-        setStatusMessage("No se pudieron cargar los prestamos");
-        setStatusType("error");
-        setLoanStatusMessage("No se pudieron cargar los prestamos");
+        const cachedLoans = await readCache<Loan[]>("studentCatalog:loans");
+        if (cachedLoans) {
+          setLoans(cachedLoans);
+          setLoanStatusMessage("Modo offline: mostrando el ultimo historial guardado.");
+        } else {
+          setLoans([]);
+          setStatusMessage("No se pudieron cargar los prestamos");
+          setStatusType("error");
+          setLoanStatusMessage("No se pudieron cargar los prestamos");
+        }
       } finally {
         setLoadingLoans(false);
       }
