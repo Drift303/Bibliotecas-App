@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import DashboardLayout from "../components/DashboardLayout";
 import { useTheme } from "../context/ThemeContext";
 import api from "../api";
 import { useBarcodeScannerGun } from "./hooks/useBarcodeScannerGun";
 import { BarcodeScanner } from "../components/ui/BarcodeScanner";
+import Pagination from "../components/Pagination";
 import {
   MapPin,
   Search,
@@ -65,6 +66,9 @@ export default function MapLocation() {
   const [notFoundCode, setNotFoundCode] = useState("");
 
   const [filterMode, setFilterMode] = useState<FilterMode>("all");
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [counts, setCounts] = useState({ all: 0, mapped: 0, unmapped: 0 });
 
   // Editor de ubicación: vive en un modal aparte para no amontonar la pantalla.
   const [selectedBook, setSelectedBook] = useState<Book | null>(null);
@@ -80,8 +84,9 @@ export default function MapLocation() {
   const [toast, setToast] = useState("");
 
   useEffect(() => {
-    loadBooks();
-  }, []);
+    const timer = window.setTimeout(loadBooks, 250);
+    return () => window.clearTimeout(timer);
+  }, [page, search, filterMode]);
 
   useEffect(() => {
     if (!toast) return;
@@ -92,9 +97,12 @@ export default function MapLocation() {
   const loadBooks = async () => {
     setLoading(true);
     try {
-      const res = await api.get("/books");
+      const location = filterMode === "all" ? undefined : filterMode;
+      const res = await api.get("/books", { params: { page, search: search.trim() || undefined, location } });
       const rawBooks = res.data?.success ? res.data.data : res.data || [];
       setBooks(Array.isArray(rawBooks) ? rawBooks : []);
+      setTotalPages(Number(res.data?.totalPages || 1));
+      setCounts(res.data?.counts || { all: 0, mapped: 0, unmapped: 0 });
     } catch (err) {
       console.error("Error cargando libros para mapeo de ubicación:", err);
     } finally {
@@ -118,9 +126,18 @@ export default function MapLocation() {
   const closeEditor = () => setSelectedBook(null);
 
   // Solo un código exacto (escaneo o Enter) intenta abrir el editor directo.
-  const handleScanCode = (code: string) => {
+  const handleScanCode = async (code: string) => {
     const codeLower = code.toLowerCase().trim();
-    const match = books.find((b) => b.isbn && b.isbn.toLowerCase() === codeLower);
+    let match = books.find((b) => b.isbn && b.isbn.toLowerCase() === codeLower);
+    if (!match) {
+      try {
+        const res = await api.get("/books", { params: { page: 1, search: codeLower } });
+        const candidates = Array.isArray(res.data?.data) ? res.data.data : [];
+        match = candidates.find((book: Book) => String(book.isbn || "").toLowerCase() === codeLower);
+      } catch {
+        // Se conserva el estado de no encontrado de la pantalla.
+      }
+    }
     setShowScanner(false);
     if (match) {
       openEditor(match);
@@ -172,25 +189,8 @@ export default function MapLocation() {
     }
   };
 
-  const mappedBooks = useMemo(() => books.filter(isMapped), [books]);
-  const unmappedBooks = useMemo(() => books.filter((b) => !isMapped(b)), [books]);
-
-  const filteredBooks = useMemo(() => {
-    let list = books;
-    if (filterMode === "mapped") list = mappedBooks;
-    if (filterMode === "unmapped") list = unmappedBooks;
-
-    const q = search.trim().toLowerCase();
-    if (!q) return list;
-    return list.filter(
-      (b) =>
-        b.title?.toLowerCase().includes(q) ||
-        b.author?.toLowerCase().includes(q) ||
-        b.isbn?.toLowerCase().includes(q)
-    );
-  }, [books, mappedBooks, unmappedBooks, filterMode, search]);
-
-  const progressPercentage = books.length === 0 ? 0 : Math.round((mappedBooks.length / books.length) * 100);
+  const filteredBooks = books;
+  const progressPercentage = counts.all === 0 ? 0 : Math.round((counts.mapped / counts.all) * 100);
 
   const inputClass = `w-full px-4 py-2 rounded-lg border transition-colors ${
     isDark
@@ -225,7 +225,7 @@ export default function MapLocation() {
         </div>
         <div className="text-right">
           <p className={`text-sm font-medium ${isDark ? "text-slate-400" : "text-slate-500"}`}>
-            {mappedBooks.length} / {books.length} ubicados
+            {counts.mapped} / {counts.all} ubicados
           </p>
           <div className="w-40 bg-slate-200 dark:bg-slate-800 rounded-full h-1.5 mt-1.5 overflow-hidden">
             <div
@@ -248,6 +248,7 @@ export default function MapLocation() {
             value={search}
             onChange={(e) => {
               setSearch(e.target.value);
+              setPage(1);
               setNotFoundCode("");
             }}
             autoFocus
@@ -283,14 +284,14 @@ export default function MapLocation() {
 
       {/* Filtro por estado: pills compactos, no una barra pesada */}
       <div className="flex items-center gap-1.5 mb-3">
-        <button onClick={() => setFilterMode("all")} className={tabButtonClass(filterMode === "all", isDark ? "bg-slate-800 text-white" : "bg-slate-800 text-white")}>
-          Todos <span className="opacity-60">· {books.length}</span>
+        <button onClick={() => { setFilterMode("all"); setPage(1); }} className={tabButtonClass(filterMode === "all", isDark ? "bg-slate-800 text-white" : "bg-slate-800 text-white")}>
+          Todos <span className="opacity-60">· {counts.all}</span>
         </button>
-        <button onClick={() => setFilterMode("unmapped")} className={tabButtonClass(filterMode === "unmapped", isDark ? "bg-amber-900/40 text-amber-400" : "bg-amber-100 text-amber-700")}>
-          Sin ubicar <span className="opacity-60">· {unmappedBooks.length}</span>
+        <button onClick={() => { setFilterMode("unmapped"); setPage(1); }} className={tabButtonClass(filterMode === "unmapped", isDark ? "bg-amber-900/40 text-amber-400" : "bg-amber-100 text-amber-700")}>
+          Sin ubicar <span className="opacity-60">· {counts.unmapped}</span>
         </button>
-        <button onClick={() => setFilterMode("mapped")} className={tabButtonClass(filterMode === "mapped", isDark ? "bg-emerald-900/40 text-emerald-400" : "bg-emerald-100 text-emerald-700")}>
-          Ubicados <span className="opacity-60">· {mappedBooks.length}</span>
+        <button onClick={() => { setFilterMode("mapped"); setPage(1); }} className={tabButtonClass(filterMode === "mapped", isDark ? "bg-emerald-900/40 text-emerald-400" : "bg-emerald-100 text-emerald-700")}>
+          Ubicados <span className="opacity-60">· {counts.mapped}</span>
         </button>
       </div>
 
@@ -348,6 +349,8 @@ export default function MapLocation() {
       </div>
 
       {/* Editor de ubicación: modal aparte, se cierra solo al guardar */}
+      {!loading && <Pagination page={page} totalPages={totalPages} onPageChange={setPage} isDark={isDark} />}
+
       {selectedBook && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4"

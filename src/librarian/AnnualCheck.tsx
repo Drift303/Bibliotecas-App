@@ -4,6 +4,7 @@ import { useTheme } from "../context/ThemeContext";
 import api from "../api";
 import { useBarcodeScannerGun } from "./hooks/useBarcodeScannerGun";
 import { BarcodeScanner } from "../components/ui/BarcodeScanner";
+import Pagination from "../components/Pagination";
 import { CheckCircle2, XCircle, Search, Camera, ClipboardCheck, BookX, AlertTriangle, PlusCircle, Save, Download } from "lucide-react";
 import { BookForm } from "./components/BookForm";
 import * as XLSX from "xlsx";
@@ -64,10 +65,35 @@ export default function AnnualCheck() {
 
   // Filter mode
   const [filterMode, setFilterMode] = useState<"all" | "missing" | "found" | "loaned" | "dropped">("all");
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [counts, setCounts] = useState({ all: 0, borrowed: 0, dropped: 0 });
+
+  // Universo COMPLETO de libros auditables (no solo la página de 20 que se
+  // esté viendo). Se carga una sola vez al entrar a la pantalla, no en cada
+  // cambio de página — así "Faltantes"/"Encontrados" y la exportación a
+  // Excel siempre comparan contra TODO el catálogo, no solo lo visible.
+  const [targetBooksFull, setTargetBooksFull] = useState<Book[]>([]);
+  const [loadingTargets, setLoadingTargets] = useState(true);
+  // Paginación en memoria específica para las pestañas Faltantes/Encontrados,
+  // ya que esos datos no vienen paginados del servidor (dependen del progreso
+  // de auditoría, que es local).
+  const [missingFoundPage, setMissingFoundPage] = useState(1);
+  const MISSING_FOUND_PAGE_SIZE = 20;
 
   useEffect(() => {
     loadBooks();
+  }, [page, filterMode]);
+
+  useEffect(() => {
+    loadTargetBooks();
   }, []);
+
+  // Se reinicia la paginación local al cambiar de pestaña o al encontrar/
+  // desmarcar libros, para no quedar en una página vacía.
+  useEffect(() => {
+    setMissingFoundPage(1);
+  }, [filterMode]);
 
   // Guardar progreso automáticamente cuando cambia
   useEffect(() => {
@@ -75,10 +101,35 @@ export default function AnnualCheck() {
     localStorage.setItem("audit_progress", JSON.stringify(idsArray));
   }, [foundBookIds]);
 
+  const loadTargetBooks = async () => {
+    setLoadingTargets(true);
+    try {
+      const res = await api.get("/books/audit-targets");
+      const rawBooks = res.data?.success ? res.data.data : [];
+      const normalized = (Array.isArray(rawBooks) ? rawBooks : []).map((b: any) => ({
+        id: b.id,
+        isbn: b.isbn || "S/N",
+        title: b.title,
+        author: b.author,
+        statusPhysical: b.statusPhysical || "GOOD",
+        status: b.status || "AVAILABLE",
+        available: b.available !== undefined ? b.available : true,
+      }));
+      setTargetBooksFull(normalized);
+    } catch (err) {
+      console.error("Error cargando el universo completo de auditoría:", err);
+    } finally {
+      setLoadingTargets(false);
+    }
+  };
+
   const loadBooks = async () => {
     setLoading(true);
     try {
-      const res = await api.get("/books");
+      const params: Record<string, string | number | undefined> = { page };
+      if (filterMode === "loaned") params.availability = "borrowed";
+      if (filterMode === "dropped") params.category = "dropped";
+      const res = await api.get("/books", { params });
       const rawBooks = res.data?.success ? res.data.data : (res.data || []);
       const normalizedBooks = (Array.isArray(rawBooks) ? rawBooks : []).map((b: any) => ({
         id: b.id,
@@ -92,6 +143,12 @@ export default function AnnualCheck() {
         available: b.available !== undefined ? b.available : true,
       }));
       setBooks(normalizedBooks);
+      setTotalPages(Number(res.data?.totalPages || 1));
+      setCounts({
+        all: Number(res.data?.counts?.all || 0),
+        borrowed: Number(res.data?.counts?.borrowed || 0),
+        dropped: Number(res.data?.counts?.dropped || 0),
+      });
     } catch (err) {
       console.error("Error cargando libros para auditoría:", err);
     } finally {
@@ -99,9 +156,29 @@ export default function AnnualCheck() {
     }
   };
 
-  const handleProcessCode = (code: string) => {
+  const handleProcessCode = async (code: string) => {
     const codeLower = code.toLowerCase().trim();
-    const match = books.find(b => b.isbn && b.isbn.toLowerCase() === codeLower);
+    let match = books.find(b => b.isbn && b.isbn.toLowerCase() === codeLower);
+    if (!match) {
+      try {
+        const res = await api.get("/books", { params: { page: 1, search: codeLower } });
+        const candidates = Array.isArray(res.data?.data) ? res.data.data : [];
+        const exact = candidates.find((book: any) => String(book.isbn || "").toLowerCase() === codeLower);
+        if (exact) {
+          match = {
+            id: exact.id,
+            isbn: exact.isbn || "S/N",
+            title: exact.title,
+            author: exact.author,
+            statusPhysical: exact.statusPhysical || "GOOD",
+            status: exact.status || "AVAILABLE",
+            available: exact.available !== undefined ? exact.available : true,
+          };
+        }
+      } catch {
+        // Se conserva el mensaje existente de código desconocido.
+      }
+    }
     
     if (match) {
       setFoundBookIds(prev => {
@@ -237,19 +314,33 @@ export default function AnnualCheck() {
 
   const loanedBooksList = books.filter(b => isLoaned(b) && !isDropped(b));
   const droppedBooksList = books.filter(b => isDropped(b));
-  const targetBooks = books.filter(b => !isLoaned(b) && !isDropped(b));
 
-  const missingBooks = targetBooks.filter(b => !foundBookIds.has(b.id));
-  const foundBooksList = targetBooks.filter(b => foundBookIds.has(b.id));
+  // Estos dos SIEMPRE se calculan sobre targetBooksFull (todo el catálogo
+  // auditable), nunca sobre `books` (que solo trae la página de 20 que se
+  // está viendo) — de lo contrario "Faltantes"/"Encontrados" y el reporte de
+  // Excel solo reflejarían una fracción del inventario real.
+  const missingBooksFull = targetBooksFull.filter(b => !foundBookIds.has(b.id));
+  const foundBooksListFull = targetBooksFull.filter(b => foundBookIds.has(b.id));
+
+  const paginate = <T,>(items: T[], page: number, pageSize: number) =>
+    items.slice((page - 1) * pageSize, page * pageSize);
+
+  const missingBooks = paginate(missingBooksFull, missingFoundPage, MISSING_FOUND_PAGE_SIZE);
+  const foundBooksList = paginate(foundBooksListFull, missingFoundPage, MISSING_FOUND_PAGE_SIZE);
+  const missingFoundTotalPages = Math.max(
+    1,
+    Math.ceil((filterMode === "found" ? foundBooksListFull.length : missingBooksFull.length) / MISSING_FOUND_PAGE_SIZE)
+  );
 
   const exportAuditToExcel = () => {
-    // 1. Preparar datos
-    const foundData = foundBooksList.map(b => ({
+    // El reporte de Excel también usa las listas completas (Full), no la
+    // página en memoria que se esté mostrando en pantalla.
+    const foundData = foundBooksListFull.map(b => ({
       ISBN: b.isbn, Título: b.title, Autor: b.author,
       "Estado Físico": b.statusPhysical, Observaciones: b.observation || "Ninguna", Validador: b.validator || "N/A"
     }));
 
-    const missingData = missingBooks.map(b => ({
+    const missingData = missingBooksFull.map(b => ({
       ISBN: b.isbn, Título: b.title, Autor: b.author,
       "Estado Físico": b.statusPhysical, "Última Observación": b.observation || "Ninguna"
     }));
@@ -287,7 +378,8 @@ export default function AnnualCheck() {
   if (filterMode === "loaned") displayBooks = loanedBooksList;
   if (filterMode === "dropped") displayBooks = droppedBooksList;
 
-  const progressPercentage = targetBooks.length === 0 ? 0 : Math.round((foundBooksList.length / targetBooks.length) * 100);
+  const auditableTotal = targetBooksFull.length;
+  const progressPercentage = auditableTotal === 0 ? 0 : Math.round((foundBookIds.size / auditableTotal) * 100);
 
   return (
     <DashboardLayout>
@@ -335,7 +427,7 @@ export default function AnnualCheck() {
             <div>
               <p className={`text-sm font-medium ${isDark ? "text-slate-400" : "text-slate-500"}`}>Meta de Auditoría</p>
               <p className={`text-3xl font-bold ${isDark ? "text-white" : "text-slate-800"}`}>
-                {foundBooksList.length} <span className="text-lg text-slate-500 font-normal">/ {targetBooks.length}</span>
+                {foundBookIds.size} <span className="text-lg text-slate-500 font-normal">/ {auditableTotal}</span>
               </p>
             </div>
             <div className={`text-xl font-bold ${progressPercentage === 100 ? "text-emerald-500" : isDark ? "text-blue-400" : "text-blue-600"}`}>
@@ -359,7 +451,7 @@ export default function AnnualCheck() {
                 <CheckCircle2 size={16} className="text-emerald-500" />
                 <span className={`text-xs font-semibold ${isDark ? "text-slate-400" : "text-slate-500"}`}>Encontrados</span>
               </div>
-              <p className={`text-xl font-bold ${isDark ? "text-white" : "text-slate-800"}`}>{foundBooksList.length}</p>
+              <p className={`text-xl font-bold ${isDark ? "text-white" : "text-slate-800"}`}>{foundBookIds.size}</p>
             </div>
             <div className={`flex-1 p-3 rounded-xl border ${
               isDark ? "bg-slate-800/50 border-slate-700" : "bg-slate-50 border-slate-200"
@@ -368,7 +460,7 @@ export default function AnnualCheck() {
                 <XCircle size={16} className="text-red-500" />
                 <span className={`text-xs font-semibold ${isDark ? "text-slate-400" : "text-slate-500"}`}>Faltantes</span>
               </div>
-              <p className={`text-xl font-bold ${isDark ? "text-white" : "text-slate-800"}`}>{missingBooks.length}</p>
+              <p className={`text-xl font-bold ${isDark ? "text-white" : "text-slate-800"}`}>{Math.max(0, auditableTotal - foundBookIds.size)}</p>
             </div>
           </div>
         </div>
@@ -532,54 +624,54 @@ export default function AnnualCheck() {
       {/* Book List Tabs */}
       <div className={`rounded-t-2xl border-b flex overflow-x-auto scrollbar-hide ${isDark ? "border-slate-800 bg-slate-900/50" : "border-slate-200 bg-white"}`}>
         <button
-          onClick={() => setFilterMode("all")}
+          onClick={() => { setFilterMode("all"); setPage(1); }}
           className={`px-5 py-4 font-medium text-sm whitespace-nowrap transition-colors border-b-2 ${
             filterMode === "all"
               ? "border-blue-500 text-blue-600 dark:text-blue-400"
               : "border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
           }`}
         >
-          Todos ({books.length})
+          Todos ({counts.all})
         </button>
         <button
-          onClick={() => setFilterMode("missing")}
+          onClick={() => { setFilterMode("missing"); setPage(1); }}
           className={`px-5 py-4 font-medium text-sm whitespace-nowrap transition-colors border-b-2 ${
             filterMode === "missing"
               ? "border-amber-500 text-amber-600 dark:text-amber-400"
               : "border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
           }`}
         >
-          Faltantes ({missingBooks.length})
+          Faltantes ({Math.max(0, auditableTotal - foundBookIds.size)})
         </button>
         <button
-          onClick={() => setFilterMode("found")}
+          onClick={() => { setFilterMode("found"); setPage(1); }}
           className={`px-5 py-4 font-medium text-sm whitespace-nowrap transition-colors border-b-2 ${
             filterMode === "found"
               ? "border-emerald-500 text-emerald-600 dark:text-emerald-400"
               : "border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
           }`}
         >
-          Encontrados ({foundBooksList.length})
+          Encontrados ({foundBookIds.size})
         </button>
         <button
-          onClick={() => setFilterMode("loaned")}
+          onClick={() => { setFilterMode("loaned"); setPage(1); }}
           className={`px-5 py-4 font-medium text-sm whitespace-nowrap transition-colors border-b-2 ${
             filterMode === "loaned"
               ? "border-purple-500 text-purple-600 dark:text-purple-400"
               : "border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
           }`}
         >
-          Prestados ({loanedBooksList.length})
+          Prestados ({counts.borrowed})
         </button>
         <button
-          onClick={() => setFilterMode("dropped")}
+          onClick={() => { setFilterMode("dropped"); setPage(1); }}
           className={`px-5 py-4 font-medium text-sm whitespace-nowrap transition-colors border-b-2 ${
             filterMode === "dropped"
               ? "border-red-500 text-red-600 dark:text-red-400"
               : "border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
           }`}
         >
-          Bajas ({droppedBooksList.length})
+          Bajas ({counts.dropped})
         </button>
       </div>
 
@@ -641,6 +733,14 @@ export default function AnnualCheck() {
           </tbody>
         </table>
       </div>
+
+      {filterMode === "missing" || filterMode === "found" ? (
+        !loadingTargets && (
+          <Pagination page={missingFoundPage} totalPages={missingFoundTotalPages} onPageChange={setMissingFoundPage} isDark={isDark} />
+        )
+      ) : (
+        !loading && <Pagination page={page} totalPages={totalPages} onPageChange={setPage} isDark={isDark} />
+      )}
 
       {showScanner && (
         <BarcodeScanner

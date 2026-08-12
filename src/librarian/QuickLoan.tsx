@@ -1,7 +1,8 @@
 import { Camera } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import api from "../api";
 import DashboardLayout from "../components/DashboardLayout";
+import Pagination from "../components/Pagination";
 import { BarcodeScanner } from "../components/ui/BarcodeScanner";
 import { useTheme } from "../context/ThemeContext";
 import { createClientId, readCache, saveCache } from "../offline/db";
@@ -63,6 +64,11 @@ export default function QuickLoan() {
   const [scanTarget, setScanTarget] = useState<"student" | "book" | null>(null);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [pendingSyncCount, setPendingSyncCount] = useState(0);
+  // Paginación aparte para la tabla "Prestamos Registrados" al fondo de esta
+  // pantalla. Es la única paginación visible en esta vista.
+  const [loansPage, setLoansPage] = useState(1);
+  const [loansTotalPages, setLoansTotalPages] = useState(1);
+  const isFirstLoansPageRender = useRef(true);
 
   const tenantType = localStorage.getItem("tenantType") || "SCHOOL";
 
@@ -106,8 +112,8 @@ export default function QuickLoan() {
     try {
       const [studentsRes, booksRes, loansRes, departmentsRes] = await Promise.all([
         api.get("/users", { params: { role: "student" } }),
-        api.get("/books"),
-        api.get("/loans"),
+        api.get("/books", { params: { page: 1, availability: "available" } }),
+        api.get("/loans", { params: { page: loansPage } }),
         tenantType === "SCHOOL" ? api.get("/departments") : Promise.resolve({ data: { data: [] } }),
       ]);
 
@@ -132,6 +138,7 @@ export default function QuickLoan() {
       const rawLoans = loansRes.data?.success ? loansRes.data.data : loansRes.data || [];
       const normalizedLoans = (Array.isArray(rawLoans) ? rawLoans : []).map(normalizeLoan);
       setLoans(normalizedLoans);
+      setLoansTotalPages(Number(loansRes.data?.totalPages || 1));
 
       await Promise.all([
         saveCache("quickLoan:students", filteredStudents),
@@ -173,6 +180,48 @@ export default function QuickLoan() {
     }
   };
 
+  // Búsqueda de libros: siempre trae la primera página de resultados
+  // filtrados por texto. No hay UI de paginación para este buscador.
+  useEffect(() => {
+    if (!isOnline) return;
+    const timer = window.setTimeout(async () => {
+      try {
+        const res = await api.get("/books", {
+          params: { page: 1, availability: "available", search: form.bookSearch.trim() || undefined },
+        });
+        const rawBooks = res.data?.success ? res.data.data : [];
+        const availableBooks = (Array.isArray(rawBooks) ? rawBooks : []).filter((book: any) => book.available === true);
+        setBooks(availableBooks);
+        await saveCache("quickLoan:books", availableBooks);
+      } catch {
+        // El flujo offline existente conserva la última página almacenada.
+      }
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [form.bookSearch, isOnline]);
+
+  // Recarga solo la tabla "Prestamos Registrados" al cambiar de página, sin
+  // volver a pedir alumnos/libros/departamentos (eso ya lo trae loadData).
+  useEffect(() => {
+    if (isFirstLoansPageRender.current) {
+      isFirstLoansPageRender.current = false;
+      return;
+    }
+    if (!isOnline) return;
+    api
+      .get("/loans", { params: { page: loansPage } })
+      .then((res) => {
+        const rawLoans = res.data?.success ? res.data.data : [];
+        const normalizedLoans = (Array.isArray(rawLoans) ? rawLoans : []).map(normalizeLoan);
+        setLoans(normalizedLoans);
+        setLoansTotalPages(Number(res.data?.totalPages || 1));
+        saveCache("quickLoan:loans", normalizedLoans);
+      })
+      .catch(() => {
+        // El flujo offline existente conserva la última página almacenada.
+      });
+  }, [loansPage, isOnline]);
+
   const searchStudentLower = form.studentSearch.toLowerCase().trim();
   const exactStudentMatch = students.filter(
     (s) => s.studentId && s.studentId.toLowerCase() === searchStudentLower
@@ -187,18 +236,7 @@ export default function QuickLoan() {
             Boolean(s.studentId && s.studentId.toLowerCase().includes(searchStudentLower))
         );
 
-  const searchBookLower = form.bookSearch.toLowerCase().trim();
-  const exactBookMatch = books.filter((b) => b.isbn && b.isbn.toLowerCase() === searchBookLower);
-
-  const filteredBooks =
-    exactBookMatch.length > 0
-      ? exactBookMatch
-      : books.filter(
-          (b) =>
-            b.title.toLowerCase().includes(searchBookLower) ||
-            b.author.toLowerCase().includes(searchBookLower) ||
-            Boolean(b.isbn && b.isbn.toLowerCase().includes(searchBookLower))
-        );
+  const filteredBooks = books;
 
   const handleSelectStudent = (student: Student) => {
     setForm({
@@ -633,6 +671,11 @@ export default function QuickLoan() {
             )}
           </tbody>
         </table>
+        {!loading && (
+          <div className="px-6 pb-5">
+            <Pagination page={loansPage} totalPages={loansTotalPages} onPageChange={setLoansPage} isDark={isDark} />
+          </div>
+        )}
       </div>
 
       {showScanner && (

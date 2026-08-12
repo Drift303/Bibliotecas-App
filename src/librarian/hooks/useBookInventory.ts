@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useCallback, useEffect, useState, useRef } from "react";
 import api from "../../api";
 import * as XLSX from "xlsx";
 import { useBarcodeScannerGun } from "./useBarcodeScannerGun";
@@ -35,6 +35,9 @@ export function useBookInventory() {
   const [showForm, setShowForm] = useState(false);
   const [editingBookId, setEditingBookId] = useState<string | number | null>(null);
   const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
 
   const [filterStatus, setFilterStatus] = useState<string>("Todos");
   const [sortField, setSortField] = useState<string>("title");
@@ -120,10 +123,14 @@ export function useBookInventory() {
   };
 
   // --- EFECTO DE CARGA ASÍNCRONA DESDE EL BACKEND ---
-  const loadBooks = async () => {
+  const loadBooks = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await api.get("/books");
+      const availability = filterStatus === "Disponible" ? "available" : filterStatus === "Prestado" ? "borrowed" : undefined;
+      const physicalStatus = filterStatus === "Extraviado" ? "LOST" : undefined;
+      const res = await api.get("/books", {
+        params: { page, search: search.trim() || undefined, availability, physicalStatus, sortField, sortOrder },
+      });
 
       const rawBooks = res.data?.success ? res.data.data : (res.data || []);
 
@@ -145,6 +152,8 @@ export function useBookInventory() {
       }));
 
       setBooks(normalizedBooks);
+      setTotal(Number(res.data?.total || 0));
+      setTotalPages(Number(res.data?.totalPages || 1));
       setStatusType("ok");
       setStatusMessage(
         normalizedBooks.length > 0
@@ -162,11 +171,17 @@ export function useBookInventory() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [page, search, filterStatus, sortField, sortOrder]);
 
   useEffect(() => {
-    loadBooks();
-  }, []);
+    const timer = window.setTimeout(loadBooks, 250);
+    return () => window.clearTimeout(timer);
+  }, [loadBooks]);
+
+  const changeSearch = (value: string) => { setSearch(value); setPage(1); };
+  const changeFilterStatus = (value: string) => { setFilterStatus(value); setPage(1); };
+  const changeSortField = (value: string) => { setSortField(value); setPage(1); };
+  const changeSortOrder = (value: "asc" | "desc") => { setSortOrder(value); setPage(1); };
 
   const handleAddBook = () => {
     setEditingBookId(null);
@@ -270,34 +285,7 @@ export function useBookInventory() {
     }
   };
 
-  const searchLower = search.toLowerCase().trim();
-  const exactIsbnMatch = books.filter(b => b.isbn && b.isbn.toLowerCase() === searchLower);
-
-  let filteredBooks = exactIsbnMatch.length > 0 && searchLower !== ""
-    ? exactIsbnMatch
-    : books.filter(
-        (book) => {
-          const matchesSearch = book.title.toLowerCase().includes(searchLower) ||
-          book.author.toLowerCase().includes(searchLower) ||
-          Boolean(book.isbn && book.isbn.toLowerCase().includes(searchLower)) ||
-          book.id.toString().toLowerCase().includes(searchLower);
-
-          const matchesStatus = filterStatus === "Todos" || book.status === filterStatus;
-
-          return matchesSearch && matchesStatus;
-        }
-      );
-
-  filteredBooks.sort((a, b) => {
-    let valA = a[sortField as keyof Book];
-    let valB = b[sortField as keyof Book];
-    if (typeof valA === "string") valA = valA.toLowerCase();
-    if (typeof valB === "string") valB = valB.toLowerCase();
-    
-    if (valA < valB) return sortOrder === "asc" ? -1 : 1;
-    if (valA > valB) return sortOrder === "asc" ? 1 : -1;
-    return 0;
-  });
+  const filteredBooks = books;
 
   const handleScan = (decodedText: string) => {
     const exactMatch = books.find(b => b.isbn && b.isbn.toLowerCase() === decodedText.toLowerCase());
@@ -305,7 +293,7 @@ export function useBookInventory() {
       handleEdit(exactMatch.id);
       setSearch("");
     } else {
-      setSearch(decodedText);
+      changeSearch(decodedText);
     }
     setShowScanner(false);
   };
@@ -448,20 +436,24 @@ export function useBookInventory() {
         document.getElementById("isbn-input")?.focus();
       }, 50);
     } else {
-      setSearch(barcode);
+      changeSearch(barcode);
     }
   });
 
   return {
     books,
     search,
-    setSearch,
+    setSearch: changeSearch,
     filterStatus,
-    setFilterStatus,
+    setFilterStatus: changeFilterStatus,
     sortField,
-    setSortField,
+    setSortField: changeSortField,
     sortOrder,
-    setSortOrder,
+    setSortOrder: changeSortOrder,
+    page,
+    setPage,
+    total,
+    totalPages,
     showForm,
     setShowForm,
     editingBookId,
