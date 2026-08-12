@@ -1,0 +1,112 @@
+diff --git a/backend/src/controllers/loanController.js b/backend/src/controllers/loanController.js
+index 0dabe45..fb30785 100644
+--- a/backend/src/controllers/loanController.js
++++ b/backend/src/controllers/loanController.js
+@@ -25,6 +25,7 @@ const getLoans = async (req, res) => {
+     const include = {
+       user: { select: { id: true, name: true, email: true, studentId: true } },
+       book: { select: { id: true, title: true, author: true, isbn: true } },
++      department: { select: { id: true, name: true } },
+     };
+     const todayStart = getMxTodayStart();
+     const { status, scope } = req.query;
+diff --git a/src/librarian/QuickLoan.tsx b/src/librarian/QuickLoan.tsx
+index 36c74c1..6258655 100644
+--- a/src/librarian/QuickLoan.tsx
++++ b/src/librarian/QuickLoan.tsx
+@@ -1,5 +1,5 @@
+ import { Camera } from "lucide-react";
+-import { useEffect, useState } from "react";
++import { useEffect, useRef, useState } from "react";
+ import api from "../api";
+ import DashboardLayout from "../components/DashboardLayout";
+ import Pagination from "../components/Pagination";
+@@ -66,6 +66,11 @@ export default function QuickLoan() {
+   const [pendingSyncCount, setPendingSyncCount] = useState(0);
+   const [bookPage, setBookPage] = useState(1);
+   const [bookTotalPages, setBookTotalPages] = useState(1);
++  // Paginación aparte para la tabla "Prestamos Registrados" al fondo de esta
++  // pantalla. Es independiente de la del buscador de libro (bookPage/bookTotalPages).
++  const [loansPage, setLoansPage] = useState(1);
++  const [loansTotalPages, setLoansTotalPages] = useState(1);
++  const isFirstLoansPageRender = useRef(true);
+ 
+   const tenantType = localStorage.getItem("tenantType") || "SCHOOL";
+ 
+@@ -110,7 +115,7 @@ export default function QuickLoan() {
+       const [studentsRes, booksRes, loansRes, departmentsRes] = await Promise.all([
+         api.get("/users", { params: { role: "student" } }),
+         api.get("/books", { params: { page: 1, availability: "available" } }),
+-        api.get("/loans", { params: { page: 1 } }),
++        api.get("/loans", { params: { page: loansPage } }),
+         tenantType === "SCHOOL" ? api.get("/departments") : Promise.resolve({ data: { data: [] } }),
+       ]);
+ 
+@@ -136,6 +141,7 @@ export default function QuickLoan() {
+       const rawLoans = loansRes.data?.success ? loansRes.data.data : loansRes.data || [];
+       const normalizedLoans = (Array.isArray(rawLoans) ? rawLoans : []).map(normalizeLoan);
+       setLoans(normalizedLoans);
++      setLoansTotalPages(Number(loansRes.data?.totalPages || 1));
+ 
+       await Promise.all([
+         saveCache("quickLoan:students", filteredStudents),
+@@ -196,6 +202,28 @@ export default function QuickLoan() {
+     return () => window.clearTimeout(timer);
+   }, [bookPage, form.bookSearch, isOnline]);
+ 
++  // Recarga solo la tabla "Prestamos Registrados" al cambiar de página, sin
++  // volver a pedir alumnos/libros/departamentos (eso ya lo trae loadData).
++  useEffect(() => {
++    if (isFirstLoansPageRender.current) {
++      isFirstLoansPageRender.current = false;
++      return;
++    }
++    if (!isOnline) return;
++    api
++      .get("/loans", { params: { page: loansPage } })
++      .then((res) => {
++        const rawLoans = res.data?.success ? res.data.data : [];
++        const normalizedLoans = (Array.isArray(rawLoans) ? rawLoans : []).map(normalizeLoan);
++        setLoans(normalizedLoans);
++        setLoansTotalPages(Number(res.data?.totalPages || 1));
++        saveCache("quickLoan:loans", normalizedLoans);
++      })
++      .catch(() => {
++        // El flujo offline existente conserva la última página almacenada.
++      });
++  }, [loansPage, isOnline]);
++
+   const searchStudentLower = form.studentSearch.toLowerCase().trim();
+   const exactStudentMatch = students.filter(
+     (s) => s.studentId && s.studentId.toLowerCase() === searchStudentLower
+@@ -647,6 +675,11 @@ export default function QuickLoan() {
+             )}
+           </tbody>
+         </table>
++        {!loading && (
++          <div className="px-6 pb-5">
++            <Pagination page={loansPage} totalPages={loansTotalPages} onPageChange={setLoansPage} isDark={isDark} />
++          </div>
++        )}
+       </div>
+ 
+       {showScanner && (
+diff --git a/src/librarian/components/BookSearch.tsx b/src/librarian/components/BookSearch.tsx
+index 19aff9b..53c7ef0 100644
+--- a/src/librarian/components/BookSearch.tsx
++++ b/src/librarian/components/BookSearch.tsx
+@@ -38,11 +38,13 @@ export function BookSearch({
+             onChange={(e) => setFilterStatus(e.target.value)}
+             className={`px-4 py-2 rounded-lg border transition-colors ${isDark ? "bg-slate-800 border-slate-600 text-white" : "bg-slate-50 border-slate-200 text-slate-900"}`}
+           >
++            {/* No hay opción "Eliminado": getBooks siempre excluye los libros
++                con borrado lógico (statusLogical: DELETED_LOGICAL) de sus
++                resultados, así que ese filtro nunca podría traer nada. */}
+             <option value="Todos">Todos los estados</option>
+             <option value="Disponible">Disponible</option>
+             <option value="Prestado">Prestado</option>
+             <option value="Extraviado">Extraviado</option>
+-            <option value="Eliminado">Eliminado</option>
+           </select>
+           
+           <div className="flex gap-2">

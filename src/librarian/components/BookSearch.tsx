@@ -38,11 +38,13 @@ export function BookSearch({
             onChange={(e) => setFilterStatus(e.target.value)}
             className={`px-4 py-2 rounded-lg border transition-colors ${isDark ? "bg-slate-800 border-slate-600 text-white" : "bg-slate-50 border-slate-200 text-slate-900"}`}
           >
+            {/* No hay opción "Eliminado": getBooks siempre excluye los libros
+                con borrado lógico (statusLogical: DELETED_LOGICAL) de sus
+                resultados, así que ese filtro nunca podría traer nada. */}
             <option value="Todos">Todos los estados</option>
             <option value="Disponible">Disponible</option>
             <option value="Prestado">Prestado</option>
             <option value="Extraviado">Extraviado</option>
-            <option value="Eliminado">Eliminado</option>
           </select>
           
           <div className="flex gap-2">

@@ -1,8 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import api from "../api";
 import BookCard from "../cards/BookCard";
 import LogoutButton from "../components/LogoutButton";
+import Pagination from "../components/Pagination";
 import { ThemeToggleButton } from "../components/ui/ThemeToggleButton";
+import { readCache, saveCache } from "../offline/db";
 import { 
   BookX,
   X,
@@ -34,6 +36,7 @@ interface Loan {
   book: string;
   loanDate: string;
   dueDate: string;
+  returnDate: string;
   status: LoanStatus;
   fine: number;
 }
@@ -47,23 +50,37 @@ export default function Catalog() {
   const [searchText, setSearchText] = useState("");
   const [filter, setFilter] = useState<AvailabilityFilter>("todos");
   const [books, setBooks] = useState<Book[]>([]);
-  const [loans, setLoans] = useState<Loan[]>([]);
+  const [currentLoans, setCurrentLoans] = useState<Loan[]>([]);
+  const [previousLoans, setPreviousLoans] = useState<Loan[]>([]);
   const [selectedBook, setSelectedBook] = useState<Book | null>(null);
   const [loadingBooks, setLoadingBooks] = useState(true);
   const [loadingLoans, setLoadingLoans] = useState(true);
   const [statusMessage, setStatusMessage] = useState("");
   const [statusType, setStatusType] = useState<"ok" | "error" | "info">("info");
   const [loanStatusMessage, setLoanStatusMessage] = useState("");
+  const [bookPage, setBookPage] = useState(1);
+  const [bookTotalPages, setBookTotalPages] = useState(1);
+  // Página separada para cada sub-sección del historial: los préstamos
+  // actuales (activos/vencidos) y los anteriores (devueltos) se piden y
+  // paginan de forma independiente, no como una sola tabla combinada.
+  const [currentLoanPage, setCurrentLoanPage] = useState(1);
+  const [currentLoanTotalPages, setCurrentLoanTotalPages] = useState(1);
+  const [previousLoanPage, setPreviousLoanPage] = useState(1);
+  const [previousLoanTotalPages, setPreviousLoanTotalPages] = useState(1);
+  const [totalFines, setTotalFines] = useState(0);
 
   useEffect(() => {
     const loadBooks = async () => {
       setLoadingBooks(true);
       try {
-        const res = await api.get("/books");
+        const availability = filter === "disponibles" ? "available" : filter === "prestados" ? "borrowed" : undefined;
+        const res = await api.get("/books", { params: { page: bookPage, search: searchText.trim() || undefined, availability } });
         const rawBooks = res.data?.success ? res.data.data : res.data || [];
         const normalizedBooks = (Array.isArray(rawBooks) ? rawBooks : []).map(mapBook);
 
         setBooks(normalizedBooks);
+        setBookTotalPages(Number(res.data?.totalPages || 1));
+        await saveCache("studentCatalog:books", normalizedBooks);
         setStatusType("ok");
         setStatusMessage(
           normalizedBooks.length > 0
@@ -71,57 +88,81 @@ export default function Catalog() {
             : "Conectado al servidor. No hay libros disponibles todavia."
         );
       } catch (err: any) {
-        setBooks([]);
-        setStatusType("error");
-        const detail = err?.response?.status
-          ? `Error ${err.response.status} al contactar el servidor.`
-          : "No se pudo conectar con el servidor. Revisa tu conexion.";
-        setStatusMessage(detail);
+        const cachedBooks = await readCache<Book[]>("studentCatalog:books");
+        if (cachedBooks) {
+          setBooks(cachedBooks);
+          setStatusType("info");
+          setStatusMessage("Modo offline: mostrando el ultimo catalogo guardado.");
+        } else {
+          setBooks([]);
+          setStatusType("error");
+          const detail = err?.response?.status
+            ? `Error ${err.response.status} al contactar el servidor.`
+            : "No se pudo conectar con el servidor. Revisa tu conexion.";
+          setStatusMessage(detail);
+        }
         console.error("Error cargando libros:", err);
       } finally {
         setLoadingBooks(false);
       }
     };
 
-    const loadLoans = async () => {
+    const timer = window.setTimeout(loadBooks, 250);
+    return () => window.clearTimeout(timer);
+  }, [bookPage, filter, searchText]);
+
+  // Préstamos actuales: status=ACTIVE ya viene ordenado por el backend con
+  // los vencidos primero (fecha de vencimiento ascendente), tal como se pidió.
+  useEffect(() => {
+    const loadCurrentLoans = async () => {
       setLoadingLoans(true);
       try {
-        const res = await api.get("/loans");
+        const res = await api.get("/loans", { params: { page: currentLoanPage, status: "ACTIVE" } });
         const data = Array.isArray(res.data?.data) ? res.data.data : [];
-        setLoans(data.map(mapLoan));
+        const normalizedLoans = data.map(mapLoan);
+        setCurrentLoans(normalizedLoans);
+        setCurrentLoanTotalPages(Number(res.data?.totalPages || 1));
+        setTotalFines(Number(res.data?.stats?.pendingFines || 0));
+        await saveCache("studentCatalog:currentLoans", normalizedLoans);
         setLoanStatusMessage("");
       } catch (err) {
-        setLoans([]);
-        setStatusMessage("No se pudieron cargar los prestamos");
-        setStatusType("error");
-        setLoanStatusMessage("No se pudieron cargar los prestamos");
+        const cachedLoans = await readCache<Loan[]>("studentCatalog:currentLoans");
+        if (cachedLoans) {
+          setCurrentLoans(cachedLoans);
+          setLoanStatusMessage("Modo offline: mostrando el ultimo historial guardado.");
+        } else {
+          setCurrentLoans([]);
+          setStatusMessage("No se pudieron cargar los prestamos");
+          setStatusType("error");
+          setLoanStatusMessage("No se pudieron cargar los prestamos");
+        }
       } finally {
         setLoadingLoans(false);
       }
     };
 
-    loadBooks();
-    loadLoans();
-  }, []);
+    loadCurrentLoans();
+  }, [currentLoanPage]);
 
-  const filteredBooks = useMemo(() => {
-    const query = searchText.trim().toLowerCase();
+  // Préstamos anteriores: solo los ya devueltos, ordenados del más reciente
+  // al más antiguo (lo maneja el backend con status=RETURNED).
+  useEffect(() => {
+    const loadPreviousLoans = async () => {
+      try {
+        const res = await api.get("/loans", { params: { page: previousLoanPage, status: "RETURNED" } });
+        const data = Array.isArray(res.data?.data) ? res.data.data : [];
+        const normalizedLoans = data.map(mapLoan);
+        setPreviousLoans(normalizedLoans);
+        setPreviousLoanTotalPages(Number(res.data?.totalPages || 1));
+        await saveCache("studentCatalog:previousLoans", normalizedLoans);
+      } catch (err) {
+        const cachedLoans = await readCache<Loan[]>("studentCatalog:previousLoans");
+        if (cachedLoans) setPreviousLoans(cachedLoans);
+      }
+    };
 
-    return books
-      .filter((book) =>
-        filter === "todos" ? true : filter === "disponibles" ? book.available : !book.available
-      )
-      .filter((book) => {
-        if (!query) return true;
-        return (
-          book.title.toLowerCase().includes(query) ||
-          book.author.toLowerCase().includes(query) ||
-          Boolean(book.isbn && book.isbn.toLowerCase().includes(query))
-        );
-      });
-  }, [books, filter, searchText]);
-
-  const totalFines = loans.reduce((total, loan) => total + loan.fine, 0);
+    loadPreviousLoans();
+  }, [previousLoanPage]);
 
   return (
     <div className="relative min-h-screen p-6 md:p-8 transition-colors bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-50 overflow-hidden">
@@ -132,7 +173,7 @@ export default function Catalog() {
         <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
           <div>
             <h1 className="text-3xl font-extrabold text-slate-900 dark:text-white mb-2 tracking-tight">
-              Catalogo de Libros
+              CATÁLOGO DE LIBROS
             </h1>
             {statusMessage && (
               <p className={`text-sm font-medium ${statusTextClass(statusType)}`}>
@@ -142,6 +183,18 @@ export default function Catalog() {
             <p className="text-sm text-slate-600 dark:text-slate-400 max-w-2xl mt-2">
               Explora la biblioteca, encuentra libros por titulo, autor o ISBN, y visualiza su estado al instante.
             </p>
+            <a
+              href="#historial"
+              className={`mt-3 inline-flex w-fit items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition ${
+                totalFines > 0
+                  ? "bg-red-100 text-red-700 hover:bg-red-200 dark:bg-red-900/30 dark:text-red-300 dark:hover:bg-red-900/50"
+                  : "bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-900/30 dark:text-blue-300 dark:hover:bg-blue-900/50"
+              }`}
+            >
+              Ver mi historial de préstamos
+              {totalFines > 0 && <span>· Multas: {money.format(totalFines)}</span>}
+              <span aria-hidden>↓</span>
+            </a>
           </div>
 
           <div className="w-full md:w-80 flex flex-col gap-3">
@@ -157,7 +210,7 @@ export default function Catalog() {
               <input
                 id="search"
                 value={searchText}
-                onChange={(event) => setSearchText(event.target.value)}
+                onChange={(event) => { setSearchText(event.target.value); setBookPage(1); }}
                 type="text"
                 placeholder="Ej. Clean Code o Robert C. Martin"
                 className="w-full rounded-2xl border border-white/50 dark:border-slate-700 bg-white/60 dark:bg-slate-900/60 backdrop-blur-md px-4 py-3 pr-12 text-sm text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 shadow-sm shadow-slate-200/50 dark:shadow-black/50 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/50"
@@ -178,7 +231,7 @@ export default function Catalog() {
             <button
               key={item.value}
               type="button"
-              onClick={() => setFilter(item.value as AvailabilityFilter)}
+              onClick={() => { setFilter(item.value as AvailabilityFilter); setBookPage(1); }}
               className={`
                 rounded-full
                 px-5
@@ -217,24 +270,25 @@ export default function Catalog() {
             title="No hay libros disponibles todavia"
             subtitle="Cuando la biblioteca agregue libros, apareceran aqui."
           />
-        ) : filteredBooks.length === 0 ? (
+        ) : books.length === 0 ? (
           <EmptyState
             title="No se encontraron libros"
             subtitle="Prueba con otro titulo, autor, ISBN o cambia el filtro activo."
           />
         ) : (
           <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-3">
-            {filteredBooks.map((book) => (
+            {books.map((book) => (
               <BookCard key={book.id} book={book} onClick={() => setSelectedBook(book)} />
             ))}
           </div>
         )}
+        {!loadingBooks && <Pagination page={bookPage} totalPages={bookTotalPages} onPageChange={setBookPage} />}
 
-        <section className="mt-12">
+        <section id="historial" className="mt-12 scroll-mt-6">
           <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
             <div>
               <h2 className="text-2xl font-bold text-slate-900 dark:text-white">
-                Historial de prestamos
+                HISTORIAL DE PRÉSTAMOS
               </h2>
               {loanStatusMessage && (
                 <p className="mt-1 text-sm font-medium text-red-600 dark:text-red-400">
@@ -247,65 +301,134 @@ export default function Catalog() {
             </div>
           </div>
 
-          <div className="overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-lg shadow-slate-200/40 dark:shadow-black/30 transition-all">
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[720px]">
-                <thead className="border-b border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100">
-                  <tr>
-                    <th className="p-3 text-left font-semibold">Libro</th>
-                    <th className="p-3 text-left font-semibold">Fecha prestamo</th>
-                    <th className="p-3 text-left font-semibold">Fecha devolucion</th>
-                    <th className="p-3 text-left font-semibold">Estado</th>
-                    <th className="p-3 text-left font-semibold">Multa</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {loans.map((loan, index) => (
-                    <tr
-                      key={loan.id}
-                      className={`border-b border-slate-100 dark:border-slate-800 transition-all duration-300 ${
-                        index % 2 === 0
-                          ? "bg-white hover:bg-slate-50 dark:bg-slate-900 dark:hover:bg-slate-800"
-                          : "bg-slate-50 hover:bg-slate-100 dark:bg-slate-800/50 dark:hover:bg-slate-800"
-                      }`}
-                    >
-                      <td className="p-3 font-medium text-slate-900 dark:text-white">{loan.book}</td>
-                      <td className="p-3 text-slate-600 dark:text-slate-400">{loan.loanDate}</td>
-                      <td className="p-3 text-slate-600 dark:text-slate-400">{loan.dueDate}</td>
-                      <td className="p-3">
-                        <span className={`inline-block rounded-full px-3 py-1 text-sm font-medium ${loanStatusClass(loan.status)}`}>
-                          {loan.status}
-                        </span>
-                      </td>
-                      <td className="p-3">
-                        <span className={loan.fine > 0 ? "font-bold text-red-600 dark:text-red-400" : "text-slate-600 dark:text-slate-400"}>
-                          {money.format(loan.fine)}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-
-                  {!loadingLoans && loans.length === 0 && (
+          {/* Préstamos actuales: activos y vencidos, siempre primero */}
+          <div className="mb-8">
+            <h3 className="mb-3 text-lg font-bold text-slate-800 dark:text-slate-100">
+              Préstamos actuales
+            </h3>
+            <div className="overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-lg shadow-slate-200/40 dark:shadow-black/30 transition-all">
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[720px]">
+                  <thead className="border-b border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100">
                     <tr>
-                      <td colSpan={5} className="p-8">
-                        <EmptyState
-                          title="No tienes préstamos registrados"
-                          subtitle="Cuando solicites un libro aparecerá aquí tu historial."
-                        />
-                      </td>
+                      <th className="p-3 text-left font-semibold">Libro</th>
+                      <th className="p-3 text-left font-semibold">Fecha prestamo</th>
+                      <th className="p-3 text-left font-semibold">Fecha vencimiento</th>
+                      <th className="p-3 text-left font-semibold">Estado</th>
+                      <th className="p-3 text-left font-semibold">Multa</th>
                     </tr>
-                  )}
+                  </thead>
+                  <tbody>
+                    {currentLoans.map((loan, index) => (
+                      <tr
+                        key={loan.id}
+                        className={`border-b border-slate-100 dark:border-slate-800 transition-all duration-300 ${
+                          index % 2 === 0
+                            ? "bg-white hover:bg-slate-50 dark:bg-slate-900 dark:hover:bg-slate-800"
+                            : "bg-slate-50 hover:bg-slate-100 dark:bg-slate-800/50 dark:hover:bg-slate-800"
+                        }`}
+                      >
+                        <td className="p-3 font-medium text-slate-900 dark:text-white">{loan.book}</td>
+                        <td className="p-3 text-slate-600 dark:text-slate-400">{loan.loanDate}</td>
+                        <td className="p-3 text-slate-600 dark:text-slate-400">{loan.dueDate}</td>
+                        <td className="p-3">
+                          <span className={`inline-block rounded-full px-3 py-1 text-sm font-medium ${loanStatusClass(loan.status)}`}>
+                            {loan.status}
+                          </span>
+                        </td>
+                        <td className="p-3">
+                          <span className={loan.fine > 0 ? "font-bold text-red-600 dark:text-red-400" : "text-slate-600 dark:text-slate-400"}>
+                            {money.format(loan.fine)}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
 
-                  {loadingLoans && (
-                    <tr>
-                      <td colSpan={5} className="p-8 text-center font-medium text-slate-500 dark:text-slate-400">
-                        Cargando prestamos...
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
+                    {!loadingLoans && currentLoans.length === 0 && (
+                      <tr>
+                        <td colSpan={5} className="p-8">
+                          <EmptyState
+                            title="No tienes préstamos activos"
+                            subtitle="Cuando solicites un libro aparecerá aquí."
+                          />
+                        </td>
+                      </tr>
+                    )}
+
+                    {loadingLoans && (
+                      <tr>
+                        <td colSpan={5} className="p-8 text-center font-medium text-slate-500 dark:text-slate-400">
+                          Cargando prestamos...
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
+            {!loadingLoans && (
+              <Pagination page={currentLoanPage} totalPages={currentLoanTotalPages} onPageChange={setCurrentLoanPage} />
+            )}
+          </div>
+
+          {/* Préstamos anteriores: ya devueltos, como historial */}
+          <div>
+            <h3 className="mb-3 text-lg font-bold text-slate-800 dark:text-slate-100">
+              Préstamos anteriores
+            </h3>
+            <div className="overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-lg shadow-slate-200/40 dark:shadow-black/30 transition-all">
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[720px]">
+                  <thead className="border-b border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100">
+                    <tr>
+                      <th className="p-3 text-left font-semibold">Libro</th>
+                      <th className="p-3 text-left font-semibold">Fecha prestamo</th>
+                      <th className="p-3 text-left font-semibold">Fecha devolucion</th>
+                      <th className="p-3 text-left font-semibold">Estado</th>
+                      <th className="p-3 text-left font-semibold">Multa</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {previousLoans.map((loan, index) => (
+                      <tr
+                        key={loan.id}
+                        className={`border-b border-slate-100 dark:border-slate-800 transition-all duration-300 ${
+                          index % 2 === 0
+                            ? "bg-white hover:bg-slate-50 dark:bg-slate-900 dark:hover:bg-slate-800"
+                            : "bg-slate-50 hover:bg-slate-100 dark:bg-slate-800/50 dark:hover:bg-slate-800"
+                        }`}
+                      >
+                        <td className="p-3 font-medium text-slate-900 dark:text-white">{loan.book}</td>
+                        <td className="p-3 text-slate-600 dark:text-slate-400">{loan.loanDate}</td>
+                        <td className="p-3 text-slate-600 dark:text-slate-400">{loan.returnDate}</td>
+                        <td className="p-3">
+                          <span className={`inline-block rounded-full px-3 py-1 text-sm font-medium ${loanStatusClass(loan.status)}`}>
+                            {loan.status}
+                          </span>
+                        </td>
+                        <td className="p-3">
+                          <span className={loan.fine > 0 ? "font-bold text-red-600 dark:text-red-400" : "text-slate-600 dark:text-slate-400"}>
+                            {money.format(loan.fine)}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+
+                    {previousLoans.length === 0 && (
+                      <tr>
+                        <td colSpan={5} className="p-8">
+                          <EmptyState
+                            title="Aún no tienes préstamos devueltos"
+                            subtitle="Tu historial de préstamos anteriores aparecerá aquí."
+                          />
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <Pagination page={previousLoanPage} totalPages={previousLoanTotalPages} onPageChange={setPreviousLoanPage} />
           </div>
         </section>
       </div>
@@ -345,6 +468,7 @@ function mapLoan(loan: any): Loan {
     book: loan.book?.title || "Libro sin titulo",
     loanDate: formatDate(loan.createdAt),
     dueDate: formatDate(loan.dueDate),
+    returnDate: formatDate(loan.returnDate),
     status: loan.status === "RETURNED" ? "Devuelto" : isOverdue ? "Vencido" : "Activo",
     fine: Number(loan.fineAmount || 0),
   };
