@@ -25,6 +25,7 @@ const getLoans = async (req, res) => {
     const include = {
       user: { select: { id: true, name: true, email: true, studentId: true } },
       book: { select: { id: true, title: true, author: true, isbn: true } },
+      department: { select: { id: true, name: true } },
     };
     const todayStart = getMxTodayStart();
     const { status, scope } = req.query;

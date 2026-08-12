@@ -67,3 +67,5 @@ coverage-final.json
 .vite/
 cookies.txt
 backup.dump
+client_secret_*.json
+client_secret*.json
