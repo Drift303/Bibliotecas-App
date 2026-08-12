@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import api from "../api";
 import DashboardLayout from "../components/DashboardLayout";
+import Pagination from "../components/Pagination";
 import { DashboardIcons as Icons } from "../components/icons/DashboardIcons";
 import { StatCard } from "../components/ui/StatCard";
 import { StatusBadge } from "../components/ui/StatusBadge";
@@ -50,6 +51,9 @@ export default function Dashboard() {
   const [phoneNoticeId, setPhoneNoticeId] = useState<string | null>(null);
   const [bulkNotifying, setBulkNotifying] = useState(false);
   const [bulkSummary, setBulkSummary] = useState("");
+  const [showFullHistory, setShowFullHistory] = useState(false);
+  const [historyPage, setHistoryPage] = useState(1);
+  const [historyTotalPages, setHistoryTotalPages] = useState(1);
 
   useEffect(() => {
     const fetchDashboardData = async () => {
@@ -58,9 +62,9 @@ export default function Dashboard() {
         setStatusMessage("");
 
         const [booksRes, usersRes, loansRes, settingsRes, dueTodayRes] = await Promise.all([
-          api.get("/books"),
+          api.get("/books", { params: { page: 1 } }),
           api.get("/users?role=student"),
-          api.get("/loans"),
+          api.get("/loans", { params: showFullHistory ? { page: historyPage } : { page: 1, scope: "today" } }),
           api.get("/tenants/settings/current").catch(() => ({ data: { data: { finePerDay: 5.0 } } })),
           api.get("/loans/due-today").catch(() => ({ data: { data: [] } })),
         ]);
@@ -78,10 +82,10 @@ export default function Dashboard() {
         const pendingFines = loans.reduce((total: number, loan: any) => total + Number(loan.fineAmount || 0), 0);
 
         setStats({
-          books: books.length,
-          activeLoans: activeLoans.length,
+          books: Number(booksRes.data?.total || books.length),
+          activeLoans: Number(loansRes.data?.stats?.active ?? activeLoans.length),
           students: students.length,
-          pendingFines,
+          pendingFines: Number(loansRes.data?.stats?.pendingFines ?? pendingFines),
         });
 
         const mapLoan = (loan: any): LoanItem => {
@@ -98,7 +102,8 @@ export default function Dashboard() {
           };
         };
 
-        setRecentLoans(loans.slice(0, 5).map(mapLoan));
+        setRecentLoans(loans.map(mapLoan));
+        setHistoryTotalPages(Number(loansRes.data?.totalPages || 1));
       } catch (err) {
         setStats({ books: 0, activeLoans: 0, students: 0, pendingFines: 0 });
         setRecentLoans([]);
@@ -110,7 +115,7 @@ export default function Dashboard() {
     };
 
     fetchDashboardData();
-  }, []);
+  }, [showFullHistory, historyPage]);
 
   const reloadDueToday = async () => {
     try {
@@ -218,8 +223,15 @@ export default function Dashboard() {
           </div>
 
           <div className="lg:col-span-2 bg-white/70 dark:bg-slate-900/70 backdrop-blur-2xl rounded-3xl shadow-xl shadow-slate-200/50 dark:shadow-black/50 border border-white/50 dark:border-slate-800/50 overflow-hidden">
-          <div className="p-6 border-b border-slate-200/50 dark:border-slate-800/50">
-            <h2 className="text-lg font-bold text-slate-800 dark:text-white">Actividad Reciente</h2>
+          <div className="p-6 border-b border-slate-200/50 dark:border-slate-800/50 flex items-center justify-between gap-3">
+            <h2 className="text-lg font-bold text-slate-800 dark:text-white">{showFullHistory ? "Historial completo" : "Actividad reciente de hoy"}</h2>
+            <button
+              type="button"
+              onClick={() => { setShowFullHistory((value) => !value); setHistoryPage(1); }}
+              className="text-sm font-semibold text-blue-600 hover:text-blue-700 dark:text-blue-400"
+            >
+              {showFullHistory ? "Ver actividad de hoy" : "Ver historial completo →"}
+            </button>
           </div>
 
           <div className="overflow-x-auto">
@@ -256,6 +268,11 @@ export default function Dashboard() {
               </tbody>
             </table>
           </div>
+          {showFullHistory && !loading && (
+            <div className="px-6 pb-5">
+              <Pagination page={historyPage} totalPages={historyTotalPages} onPageChange={setHistoryPage} />
+            </div>
+          )}
         </div>
         </div>
         

@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import api from "../api";
 import BookCard from "../cards/BookCard";
 import LogoutButton from "../components/LogoutButton";
+import Pagination from "../components/Pagination";
 import { ThemeToggleButton } from "../components/ui/ThemeToggleButton";
 import { readCache, saveCache } from "../offline/db";
 import { 
@@ -35,6 +36,7 @@ interface Loan {
   book: string;
   loanDate: string;
   dueDate: string;
+  returnDate: string;
   status: LoanStatus;
   fine: number;
 }
@@ -55,16 +57,23 @@ export default function Catalog() {
   const [statusMessage, setStatusMessage] = useState("");
   const [statusType, setStatusType] = useState<"ok" | "error" | "info">("info");
   const [loanStatusMessage, setLoanStatusMessage] = useState("");
+  const [bookPage, setBookPage] = useState(1);
+  const [bookTotalPages, setBookTotalPages] = useState(1);
+  const [loanPage, setLoanPage] = useState(1);
+  const [loanTotalPages, setLoanTotalPages] = useState(1);
+  const [totalFines, setTotalFines] = useState(0);
 
   useEffect(() => {
     const loadBooks = async () => {
       setLoadingBooks(true);
       try {
-        const res = await api.get("/books");
+        const availability = filter === "disponibles" ? "available" : filter === "prestados" ? "borrowed" : undefined;
+        const res = await api.get("/books", { params: { page: bookPage, search: searchText.trim() || undefined, availability } });
         const rawBooks = res.data?.success ? res.data.data : res.data || [];
         const normalizedBooks = (Array.isArray(rawBooks) ? rawBooks : []).map(mapBook);
 
         setBooks(normalizedBooks);
+        setBookTotalPages(Number(res.data?.totalPages || 1));
         await saveCache("studentCatalog:books", normalizedBooks);
         setStatusType("ok");
         setStatusMessage(
@@ -92,13 +101,20 @@ export default function Catalog() {
       }
     };
 
+    const timer = window.setTimeout(loadBooks, 250);
+    return () => window.clearTimeout(timer);
+  }, [bookPage, filter, searchText]);
+
+  useEffect(() => {
     const loadLoans = async () => {
       setLoadingLoans(true);
       try {
-        const res = await api.get("/loans");
+        const res = await api.get("/loans", { params: { page: loanPage } });
         const data = Array.isArray(res.data?.data) ? res.data.data : [];
         const normalizedLoans = data.map(mapLoan);
         setLoans(normalizedLoans);
+        setLoanTotalPages(Number(res.data?.totalPages || 1));
+        setTotalFines(Number(res.data?.stats?.pendingFines || 0));
         await saveCache("studentCatalog:loans", normalizedLoans);
         setLoanStatusMessage("");
       } catch (err) {
@@ -117,28 +133,8 @@ export default function Catalog() {
       }
     };
 
-    loadBooks();
     loadLoans();
-  }, []);
-
-  const filteredBooks = useMemo(() => {
-    const query = searchText.trim().toLowerCase();
-
-    return books
-      .filter((book) =>
-        filter === "todos" ? true : filter === "disponibles" ? book.available : !book.available
-      )
-      .filter((book) => {
-        if (!query) return true;
-        return (
-          book.title.toLowerCase().includes(query) ||
-          book.author.toLowerCase().includes(query) ||
-          Boolean(book.isbn && book.isbn.toLowerCase().includes(query))
-        );
-      });
-  }, [books, filter, searchText]);
-
-  const totalFines = loans.reduce((total, loan) => total + loan.fine, 0);
+  }, [loanPage]);
 
   return (
     <div className="relative min-h-screen p-6 md:p-8 transition-colors bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-50 overflow-hidden">
@@ -149,7 +145,7 @@ export default function Catalog() {
         <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
           <div>
             <h1 className="text-3xl font-extrabold text-slate-900 dark:text-white mb-2 tracking-tight">
-              Catalogo de Libros
+              CATÁLOGO DE LIBROS
             </h1>
             {statusMessage && (
               <p className={`text-sm font-medium ${statusTextClass(statusType)}`}>
@@ -174,7 +170,7 @@ export default function Catalog() {
               <input
                 id="search"
                 value={searchText}
-                onChange={(event) => setSearchText(event.target.value)}
+                onChange={(event) => { setSearchText(event.target.value); setBookPage(1); }}
                 type="text"
                 placeholder="Ej. Clean Code o Robert C. Martin"
                 className="w-full rounded-2xl border border-white/50 dark:border-slate-700 bg-white/60 dark:bg-slate-900/60 backdrop-blur-md px-4 py-3 pr-12 text-sm text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 shadow-sm shadow-slate-200/50 dark:shadow-black/50 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/50"
@@ -195,7 +191,7 @@ export default function Catalog() {
             <button
               key={item.value}
               type="button"
-              onClick={() => setFilter(item.value as AvailabilityFilter)}
+              onClick={() => { setFilter(item.value as AvailabilityFilter); setBookPage(1); }}
               className={`
                 rounded-full
                 px-5
@@ -234,24 +230,25 @@ export default function Catalog() {
             title="No hay libros disponibles todavia"
             subtitle="Cuando la biblioteca agregue libros, apareceran aqui."
           />
-        ) : filteredBooks.length === 0 ? (
+        ) : books.length === 0 ? (
           <EmptyState
             title="No se encontraron libros"
             subtitle="Prueba con otro titulo, autor, ISBN o cambia el filtro activo."
           />
         ) : (
           <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-3">
-            {filteredBooks.map((book) => (
+            {books.map((book) => (
               <BookCard key={book.id} book={book} onClick={() => setSelectedBook(book)} />
             ))}
           </div>
         )}
+        {!loadingBooks && <Pagination page={bookPage} totalPages={bookTotalPages} onPageChange={setBookPage} />}
 
         <section className="mt-12">
           <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
             <div>
               <h2 className="text-2xl font-bold text-slate-900 dark:text-white">
-                Historial de prestamos
+                HISTORIAL DE PRÉSTAMOS
               </h2>
               {loanStatusMessage && (
                 <p className="mt-1 text-sm font-medium text-red-600 dark:text-red-400">
@@ -263,6 +260,9 @@ export default function Catalog() {
               Multas: {money.format(totalFines)}
             </div>
           </div>
+          <p className="mb-4 text-sm text-slate-600 dark:text-slate-400">
+            Los préstamos actuales y vencidos aparecen primero; después se muestran los préstamos anteriores y devueltos.
+          </p>
 
           <div className="overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-lg shadow-slate-200/40 dark:shadow-black/30 transition-all">
             <div className="overflow-x-auto">
@@ -288,7 +288,7 @@ export default function Catalog() {
                     >
                       <td className="p-3 font-medium text-slate-900 dark:text-white">{loan.book}</td>
                       <td className="p-3 text-slate-600 dark:text-slate-400">{loan.loanDate}</td>
-                      <td className="p-3 text-slate-600 dark:text-slate-400">{loan.dueDate}</td>
+                      <td className="p-3 text-slate-600 dark:text-slate-400">{loan.returnDate}</td>
                       <td className="p-3">
                         <span className={`inline-block rounded-full px-3 py-1 text-sm font-medium ${loanStatusClass(loan.status)}`}>
                           {loan.status}
@@ -324,6 +324,7 @@ export default function Catalog() {
               </table>
             </div>
           </div>
+          {!loadingLoans && <Pagination page={loanPage} totalPages={loanTotalPages} onPageChange={setLoanPage} />}
         </section>
       </div>
 
@@ -362,6 +363,7 @@ function mapLoan(loan: any): Loan {
     book: loan.book?.title || "Libro sin titulo",
     loanDate: formatDate(loan.createdAt),
     dueDate: formatDate(loan.dueDate),
+    returnDate: formatDate(loan.returnDate),
     status: loan.status === "RETURNED" ? "Devuelto" : isOverdue ? "Vencido" : "Activo",
     fine: Number(loan.fineAmount || 0),
   };

@@ -13,19 +13,80 @@ const getBooks = async (req, res) => {
       return res.status(401).json({ error: 'Missing tenant context' });
     }
 
-    const books = await prisma.book.findMany({
-      where: {
-        tenantId,
-        statusLogical: { not: 'DELETED_LOGICAL' },
-      },
-      orderBy: {
-        createdAt: 'desc',
-      },
-    });
+    const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
+    const limit = 20;
+    const search = String(req.query.search || '').trim();
+    const availability = String(req.query.availability || '').toLowerCase();
+    const location = String(req.query.location || '').toLowerCase();
+    const physicalStatus = String(req.query.physicalStatus || '').toUpperCase();
+    const category = String(req.query.category || '').toLowerCase();
+    const sortField = ['id', 'title', 'author', 'createdAt'].includes(req.query.sortField)
+      ? req.query.sortField
+      : 'createdAt';
+    const sortOrder = req.query.sortOrder === 'asc' ? 'asc' : 'desc';
+
+    const where = {
+      tenantId,
+      statusLogical: { not: 'DELETED_LOGICAL' },
+    };
+
+    if (search) {
+      where.OR = [
+        { title: { contains: search, mode: 'insensitive' } },
+        { author: { contains: search, mode: 'insensitive' } },
+        { isbn: { contains: search, mode: 'insensitive' } },
+        { qrCode: { contains: search, mode: 'insensitive' } },
+        { id: { contains: search, mode: 'insensitive' } },
+      ];
+    }
+    if (availability === 'available') where.available = true;
+    if (availability === 'borrowed') where.available = false;
+    if (['GOOD', 'DAMAGED', 'LOST', 'DISCARDED'].includes(physicalStatus)) {
+      where.statusPhysical = physicalStatus;
+    }
+    if (category === 'dropped') where.statusPhysical = { in: ['LOST', 'DISCARDED'] };
+    if (location === 'mapped') {
+      where.AND = [{ OR: [{ storageLocation: { not: null } }, { locationHall: { not: null }, locationShelf: { not: null } }] }];
+    }
+    if (location === 'unmapped') {
+      where.AND = [{ storageLocation: null, OR: [{ locationHall: null }, { locationShelf: null }] }];
+    }
+
+    const visibleWhere = { tenantId, statusLogical: { not: 'DELETED_LOGICAL' } };
+    const mappedWhere = {
+      ...visibleWhere,
+      OR: [
+        { storageLocation: { not: null } },
+        { locationHall: { not: null } },
+        { locationShelf: { not: null } },
+        { locationRow: { not: null } },
+        { locationColumn: { not: null } },
+      ],
+    };
+    const [books, total, allCount, mappedCount, borrowedCount, droppedCount] = await prisma.$transaction([
+      prisma.book.findMany({
+        where,
+        skip: (page - 1) * limit,
+        take: limit,
+        orderBy: { [sortField]: sortOrder },
+      }),
+      prisma.book.count({ where }),
+      prisma.book.count({ where: visibleWhere }),
+      prisma.book.count({ where: mappedWhere }),
+      prisma.book.count({ where: { ...visibleWhere, available: false, statusPhysical: { notIn: ['LOST', 'DISCARDED'] } } }),
+      prisma.book.count({ where: { ...visibleWhere, statusPhysical: { in: ['LOST', 'DISCARDED'] } } }),
+    ]);
+
+    const totalPages = Math.max(1, Math.ceil(total / limit));
 
     res.json({
       success: true,
       data: books,
+      page,
+      limit,
+      total,
+      totalPages,
+      counts: { all: allCount, mapped: mappedCount, unmapped: allCount - mappedCount, borrowed: borrowedCount, dropped: droppedCount },
     });
   } catch (err) {
     console.error('getBooks error', err);

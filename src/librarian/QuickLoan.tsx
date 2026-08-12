@@ -2,6 +2,7 @@ import { Camera } from "lucide-react";
 import { useEffect, useState } from "react";
 import api from "../api";
 import DashboardLayout from "../components/DashboardLayout";
+import Pagination from "../components/Pagination";
 import { BarcodeScanner } from "../components/ui/BarcodeScanner";
 import { useTheme } from "../context/ThemeContext";
 import { createClientId, readCache, saveCache } from "../offline/db";
@@ -63,6 +64,8 @@ export default function QuickLoan() {
   const [scanTarget, setScanTarget] = useState<"student" | "book" | null>(null);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [pendingSyncCount, setPendingSyncCount] = useState(0);
+  const [bookPage, setBookPage] = useState(1);
+  const [bookTotalPages, setBookTotalPages] = useState(1);
 
   const tenantType = localStorage.getItem("tenantType") || "SCHOOL";
 
@@ -106,8 +109,8 @@ export default function QuickLoan() {
     try {
       const [studentsRes, booksRes, loansRes, departmentsRes] = await Promise.all([
         api.get("/users", { params: { role: "student" } }),
-        api.get("/books"),
-        api.get("/loans"),
+        api.get("/books", { params: { page: 1, availability: "available" } }),
+        api.get("/loans", { params: { page: 1 } }),
         tenantType === "SCHOOL" ? api.get("/departments") : Promise.resolve({ data: { data: [] } }),
       ]);
 
@@ -128,6 +131,7 @@ export default function QuickLoan() {
         (b: any) => b.available === true
       );
       setBooks(filteredBooks);
+      setBookTotalPages(Number(booksRes.data?.totalPages || 1));
 
       const rawLoans = loansRes.data?.success ? loansRes.data.data : loansRes.data || [];
       const normalizedLoans = (Array.isArray(rawLoans) ? rawLoans : []).map(normalizeLoan);
@@ -173,6 +177,25 @@ export default function QuickLoan() {
     }
   };
 
+  useEffect(() => {
+    if (!isOnline) return;
+    const timer = window.setTimeout(async () => {
+      try {
+        const res = await api.get("/books", {
+          params: { page: bookPage, availability: "available", search: form.bookSearch.trim() || undefined },
+        });
+        const rawBooks = res.data?.success ? res.data.data : [];
+        const availableBooks = (Array.isArray(rawBooks) ? rawBooks : []).filter((book: any) => book.available === true);
+        setBooks(availableBooks);
+        setBookTotalPages(Number(res.data?.totalPages || 1));
+        await saveCache("quickLoan:books", availableBooks);
+      } catch {
+        // El flujo offline existente conserva la última página almacenada.
+      }
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [bookPage, form.bookSearch, isOnline]);
+
   const searchStudentLower = form.studentSearch.toLowerCase().trim();
   const exactStudentMatch = students.filter(
     (s) => s.studentId && s.studentId.toLowerCase() === searchStudentLower
@@ -187,18 +210,7 @@ export default function QuickLoan() {
             Boolean(s.studentId && s.studentId.toLowerCase().includes(searchStudentLower))
         );
 
-  const searchBookLower = form.bookSearch.toLowerCase().trim();
-  const exactBookMatch = books.filter((b) => b.isbn && b.isbn.toLowerCase() === searchBookLower);
-
-  const filteredBooks =
-    exactBookMatch.length > 0
-      ? exactBookMatch
-      : books.filter(
-          (b) =>
-            b.title.toLowerCase().includes(searchBookLower) ||
-            b.author.toLowerCase().includes(searchBookLower) ||
-            Boolean(b.isbn && b.isbn.toLowerCase().includes(searchBookLower))
-        );
+  const filteredBooks = books;
 
   const handleSelectStudent = (student: Student) => {
     setForm({
@@ -228,6 +240,7 @@ export default function QuickLoan() {
 
   const handleBookSearchChange = (value: string) => {
     setForm({ ...form, bookSearch: value, bookId: "" });
+    setBookPage(1);
     setShowBookSuggestions(true);
   };
 
@@ -518,6 +531,7 @@ export default function QuickLoan() {
                 </div>
               )}
             </div>
+            <Pagination page={bookPage} totalPages={bookTotalPages} onPageChange={setBookPage} isDark={isDark} />
 
             {form.bookId && (
               <div className={`mt-3 p-3 rounded-lg border transition-colors ${isDark ? "bg-green-900 border-green-700" : "bg-green-50 border-green-200"}`}>

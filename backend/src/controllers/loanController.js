@@ -17,42 +17,112 @@ const getLoans = async (req, res) => {
     const tenantId = req.user && req.user.tenantId;
     if (!tenantId) return res.status(401).json({ error: 'Missing tenant context' });
 
-    // Filtro opcional por estado: /api/loans?status=ACTIVE o ?status=RETURNED
-   const { status } = req.query;
-const where = { tenantId };
-if (req.user.role === 'student') {
-  where.userId = req.user.id;
-}
-if (status === 'ACTIVE' || status === 'RETURNED') {
-  where.status = status;
-} else if (status === 'OVERDUE') {
-  where.status = 'ACTIVE';
-  where.dueDate = { lt: getMxTodayStart() };
-}
+    const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
+    const limit = 20;
+    const baseWhere = { tenantId };
+    if (req.user.role === 'student') baseWhere.userId = req.user.id;
 
-    const loans = await prisma.loan.findMany({
-      where,
-      include: {
-        user: { select: { id: true, name: true, email: true, studentId: true } },
-        book: { select: { id: true, title: true, author: true, isbn: true } },
-      },
-      orderBy: { createdAt: 'desc' },
-    });
+    const include = {
+      user: { select: { id: true, name: true, email: true, studentId: true } },
+      book: { select: { id: true, title: true, author: true, isbn: true } },
+    };
+    const todayStart = getMxTodayStart();
+    const { status, scope } = req.query;
+
+    if (scope === 'today') {
+      const { start, end } = getTodayRange();
+      const where = { ...baseWhere, loanDate: { gte: start, lt: end } };
+      const [loans, total, stats] = await Promise.all([
+        prisma.loan.findMany({ where, include, skip: (page - 1) * limit, take: limit, orderBy: { loanDate: 'desc' } }),
+        prisma.loan.count({ where }),
+        getLoanStats(baseWhere, todayStart),
+      ]);
+      return res.json({ success: true, data: addOverdueFlag(loans), page, limit, total, totalPages: Math.max(1, Math.ceil(total / limit)), stats });
+    }
+
+    if (status === 'ACTIVE' || status === 'RETURNED' || status === 'OVERDUE') {
+      const where = { ...baseWhere };
+      if (status === 'OVERDUE') Object.assign(where, { status: 'ACTIVE', dueDate: { lt: todayStart } });
+      else where.status = status;
+      const orderBy = status === 'RETURNED' ? { returnDate: 'desc' } : { dueDate: { sort: 'asc', nulls: 'last' } };
+      const [loans, total, stats] = await Promise.all([
+        prisma.loan.findMany({ where, include, skip: (page - 1) * limit, take: limit, orderBy }),
+        prisma.loan.count({ where }),
+        getLoanStats(baseWhere, todayStart),
+      ]);
+      return res.json({ success: true, data: addOverdueFlag(loans), page, limit, total, totalPages: Math.max(1, Math.ceil(total / limit)), stats });
+    }
+
+    const overdueWhere = { ...baseWhere, status: 'ACTIVE', dueDate: { lt: todayStart } };
+    const activeWhere = {
+      ...baseWhere,
+      status: 'ACTIVE',
+      OR: [{ dueDate: null }, { dueDate: { gte: todayStart } }],
+    };
+    const returnedWhere = { ...baseWhere, status: 'RETURNED' };
+    const [overdueCount, activeCount, returnedCount, stats] = await Promise.all([
+      prisma.loan.count({ where: overdueWhere }),
+      prisma.loan.count({ where: activeWhere }),
+      prisma.loan.count({ where: returnedWhere }),
+      getLoanStats(baseWhere, todayStart),
+    ]);
+    const total = overdueCount + activeCount + returnedCount;
+    const offset = (page - 1) * limit;
+    const segments = [
+      { where: overdueWhere, count: overdueCount, orderBy: { dueDate: 'asc' } },
+      { where: activeWhere, count: activeCount, orderBy: { dueDate: { sort: 'asc', nulls: 'last' } } },
+      { where: returnedWhere, count: returnedCount, orderBy: { returnDate: 'desc' } },
+    ];
+    const loans = [];
+    let remainingOffset = offset;
+    for (const segment of segments) {
+      if (loans.length >= limit) break;
+      if (remainingOffset >= segment.count) {
+        remainingOffset -= segment.count;
+        continue;
+      }
+      const rows = await prisma.loan.findMany({
+        where: segment.where,
+        include,
+        skip: remainingOffset,
+        take: limit - loans.length,
+        orderBy: segment.orderBy,
+      });
+      loans.push(...rows);
+      remainingOffset = 0;
+    }
 
     // isOverdue se calcula aquí (con el mismo criterio de día calendario de
     // México que el resto del módulo) para que el frontend no tenga que
     // recalcularlo comparando contra la hora local del navegador de quien
     // esté viendo la pantalla, que puede no coincidir y desfasar el estado.
-    const data = loans.map((loan) => ({
-      ...loan,
-      isOverdue: loan.status === 'ACTIVE' && isPastDueDay(loan.dueDate),
-    }));
-
-    res.json({ success: true, data });
+    res.json({
+      success: true,
+      data: addOverdueFlag(loans),
+      page,
+      limit,
+      total,
+      totalPages: Math.max(1, Math.ceil(total / limit)),
+      stats,
+    });
   } catch (err) {
     console.error('getLoans error', err);
     res.status(500).json({ error: 'Failed to fetch loans' });
   }
+};
+
+const addOverdueFlag = (loans) => loans.map((loan) => ({
+  ...loan,
+  isOverdue: loan.status === 'ACTIVE' && isPastDueDay(loan.dueDate),
+}));
+
+const getLoanStats = async (baseWhere, todayStart) => {
+  const [active, overdue, fines] = await Promise.all([
+    prisma.loan.count({ where: { ...baseWhere, status: 'ACTIVE', OR: [{ dueDate: null }, { dueDate: { gte: todayStart } }] } }),
+    prisma.loan.count({ where: { ...baseWhere, status: 'ACTIVE', dueDate: { lt: todayStart } } }),
+    prisma.loan.aggregate({ where: baseWhere, _sum: { fineAmount: true } }),
+  ]);
+  return { active, overdue, pendingFines: Number(fines._sum.fineAmount || 0) };
 };
 
 const createLoan = async (req, res) => {

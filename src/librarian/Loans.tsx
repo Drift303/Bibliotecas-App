@@ -2,6 +2,7 @@ import { AlertCircle } from "lucide-react";
 import { useEffect, useState } from "react";
 import api from "../api";
 import DashboardLayout from "../components/DashboardLayout";
+import Pagination from "../components/Pagination";
 import { useTheme } from "../context/ThemeContext";
 import { createClientId, readCache, saveCache } from "../offline/db";
 import { getPendingLoansCount, queueLoanTransaction, syncPendingLoans } from "../offline/syncLoans";
@@ -51,10 +52,13 @@ export default function Loans() {
   const [submittingReturn, setSubmittingReturn] = useState(false);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [pendingSyncCount, setPendingSyncCount] = useState(0);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [summary, setSummary] = useState({ active: 0, overdue: 0, pendingFines: 0 });
 
   useEffect(() => {
     loadLoans();
-  }, []);
+  }, [page]);
 
   useEffect(() => {
     const updateOnlineState = () => {
@@ -79,13 +83,19 @@ export default function Loans() {
       setLoading(true);
       setStatusMessage("");
       const [loansRes, settingsRes] = await Promise.all([
-        api.get("/loans"),
+        api.get("/loans", { params: { page } }),
         api.get("/tenants/settings/current").catch(() => ({ data: { data: { finePerDay: 5.0 } } })),
       ]);
 
       const rawLoans = Array.isArray(loansRes.data?.data) ? loansRes.data.data : [];
       const normalizedLoans = rawLoans.map(mapLoan);
       setLoans(normalizedLoans);
+      setTotalPages(Number(loansRes.data?.totalPages || 1));
+      setSummary({
+        active: Number(loansRes.data?.stats?.active || 0),
+        overdue: Number(loansRes.data?.stats?.overdue || 0),
+        pendingFines: Number(loansRes.data?.stats?.pendingFines || 0),
+      });
 
       if (settingsRes.data?.data?.finePerDay !== undefined) {
         setFinePerDay(settingsRes.data.data.finePerDay);
@@ -221,8 +231,6 @@ export default function Loans() {
     }
   };
 
-  const totalFines = loans.reduce((total, loan) => total + loan.fine, 0);
-
   return (
     <DashboardLayout>
       <h1 className={`text-4xl font-bold mb-8 ${isDark ? "text-blue-400" : "text-[#1E3A5F]"}`}>
@@ -256,9 +264,9 @@ export default function Loans() {
       </div>
 
       <div className="grid md:grid-cols-3 gap-4 mb-6">
-        <SummaryCard label="Préstamos Activos" value={loans.filter((loan) => loan.status === "Activo").length} isDark={isDark} tone="blue" />
-        <SummaryCard label="Préstamos Vencidos" value={loans.filter((loan) => loan.status === "Vencido").length} isDark={isDark} tone="red" />
-        <SummaryCard label="Multas Pendientes" value={money.format(totalFines)} isDark={isDark} tone="amber" />
+        <SummaryCard label="Préstamos Activos" value={summary.active} isDark={isDark} tone="blue" />
+        <SummaryCard label="Préstamos Vencidos" value={summary.overdue} isDark={isDark} tone="red" />
+        <SummaryCard label="Multas Pendientes" value={money.format(summary.pendingFines)} isDark={isDark} tone="amber" />
       </div>
 
       <div className={`rounded-lg border overflow-hidden ${isDark ? "bg-slate-900 border-slate-700" : "bg-white border-slate-200"}`}>
@@ -332,6 +340,8 @@ export default function Loans() {
           </table>
         </div>
       </div>
+
+      {!loading && <Pagination page={page} totalPages={totalPages} onPageChange={setPage} isDark={isDark} />}
 
       {activeReturn && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-6 z-50">

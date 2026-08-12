@@ -11,6 +11,7 @@ import { BookSearch } from "./components/BookSearch";
 import { BulkUploadConflictsModal } from "./components/BulkUploadConflictsModal";
 import { ColumnMapperModal } from "./components/ColumnMapperModal";
 import { Info } from "lucide-react";
+import Pagination from "../components/Pagination";
 
 // Custom Hook para toda la lógica de negocio y estados
 import { useBookInventory } from "./hooks/useBookInventory";
@@ -28,6 +29,9 @@ export default function Inventory() {
     setSortField,
     sortOrder,
     setSortOrder,
+    page,
+    setPage,
+    totalPages,
     showForm,
     setShowForm,
     editingBookId,
@@ -152,6 +156,9 @@ export default function Inventory() {
           onToggleSelect={handleToggleSelectBook}
           onSelectAll={handleSelectAllBooks}
         />
+      )}
+      {!loading && (
+        <Pagination page={page} totalPages={totalPages} onPageChange={setPage} isDark={isDark} />
       )}
 
       {/* Modal General para Escanear Código QR/Barras y buscar en la lista */}
