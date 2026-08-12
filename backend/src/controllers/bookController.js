@@ -369,6 +369,49 @@ const importBooks = async (req, res) => {
   }
 };
 
+// Devuelve el universo COMPLETO de libros auditables (no prestados, no dados
+// de baja) para la auditoría anual — a propósito NO está paginado.
+//
+// Por qué: las pestañas "Faltantes"/"Encontrados" de AnnualCheck.tsx
+// necesitan comparar contra TODO el catálogo auditable, no solo la página
+// de 20 que se está viendo en ese momento — si no, "Faltantes" solo mostraría
+// lo que falta dentro de esos 20 libros, no en las 7,000 que puede tener la
+// biblioteca, lo cual rompe el propósito de la auditoría anual.
+//
+// Para mantenerlo ligero pese a no paginar, solo se devuelven los campos
+// mínimos necesarios (no toda la fila del libro).
+const getAuditTargets = async (req, res) => {
+  try {
+    const tenantId = req.user && req.user.tenantId;
+    if (!tenantId) {
+      return res.status(401).json({ error: 'Missing tenant context' });
+    }
+
+    const books = await prisma.book.findMany({
+      where: {
+        tenantId,
+        statusLogical: { not: 'DELETED_LOGICAL' },
+        available: true,
+        statusPhysical: { notIn: ['LOST', 'DISCARDED'] },
+      },
+      select: {
+        id: true,
+        title: true,
+        author: true,
+        isbn: true,
+        statusPhysical: true,
+        available: true,
+      },
+      orderBy: { title: 'asc' },
+    });
+
+    res.json({ success: true, data: books, total: books.length });
+  } catch (err) {
+    console.error('getAuditTargets error', err);
+    res.status(500).json({ error: 'Failed to fetch audit targets' });
+  }
+};
+
 module.exports = {
   getBooks,
   createBook,
@@ -376,4 +419,5 @@ module.exports = {
   deleteBook,
   createBooksBulk,
   importBooks,
+  getAuditTargets,
 };

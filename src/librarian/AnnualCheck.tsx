@@ -69,15 +69,59 @@ export default function AnnualCheck() {
   const [totalPages, setTotalPages] = useState(1);
   const [counts, setCounts] = useState({ all: 0, borrowed: 0, dropped: 0 });
 
+  // Universo COMPLETO de libros auditables (no solo la página de 20 que se
+  // esté viendo). Se carga una sola vez al entrar a la pantalla, no en cada
+  // cambio de página — así "Faltantes"/"Encontrados" y la exportación a
+  // Excel siempre comparan contra TODO el catálogo, no solo lo visible.
+  const [targetBooksFull, setTargetBooksFull] = useState<Book[]>([]);
+  const [loadingTargets, setLoadingTargets] = useState(true);
+  // Paginación en memoria específica para las pestañas Faltantes/Encontrados,
+  // ya que esos datos no vienen paginados del servidor (dependen del progreso
+  // de auditoría, que es local).
+  const [missingFoundPage, setMissingFoundPage] = useState(1);
+  const MISSING_FOUND_PAGE_SIZE = 20;
+
   useEffect(() => {
     loadBooks();
   }, [page, filterMode]);
+
+  useEffect(() => {
+    loadTargetBooks();
+  }, []);
+
+  // Se reinicia la paginación local al cambiar de pestaña o al encontrar/
+  // desmarcar libros, para no quedar en una página vacía.
+  useEffect(() => {
+    setMissingFoundPage(1);
+  }, [filterMode]);
 
   // Guardar progreso automáticamente cuando cambia
   useEffect(() => {
     const idsArray = Array.from(foundBookIds);
     localStorage.setItem("audit_progress", JSON.stringify(idsArray));
   }, [foundBookIds]);
+
+  const loadTargetBooks = async () => {
+    setLoadingTargets(true);
+    try {
+      const res = await api.get("/books/audit-targets");
+      const rawBooks = res.data?.success ? res.data.data : [];
+      const normalized = (Array.isArray(rawBooks) ? rawBooks : []).map((b: any) => ({
+        id: b.id,
+        isbn: b.isbn || "S/N",
+        title: b.title,
+        author: b.author,
+        statusPhysical: b.statusPhysical || "GOOD",
+        status: b.status || "AVAILABLE",
+        available: b.available !== undefined ? b.available : true,
+      }));
+      setTargetBooksFull(normalized);
+    } catch (err) {
+      console.error("Error cargando el universo completo de auditoría:", err);
+    } finally {
+      setLoadingTargets(false);
+    }
+  };
 
   const loadBooks = async () => {
     setLoading(true);
@@ -270,19 +314,33 @@ export default function AnnualCheck() {
 
   const loanedBooksList = books.filter(b => isLoaned(b) && !isDropped(b));
   const droppedBooksList = books.filter(b => isDropped(b));
-  const targetBooks = books.filter(b => !isLoaned(b) && !isDropped(b));
 
-  const missingBooks = targetBooks.filter(b => !foundBookIds.has(b.id));
-  const foundBooksList = targetBooks.filter(b => foundBookIds.has(b.id));
+  // Estos dos SIEMPRE se calculan sobre targetBooksFull (todo el catálogo
+  // auditable), nunca sobre `books` (que solo trae la página de 20 que se
+  // está viendo) — de lo contrario "Faltantes"/"Encontrados" y el reporte de
+  // Excel solo reflejarían una fracción del inventario real.
+  const missingBooksFull = targetBooksFull.filter(b => !foundBookIds.has(b.id));
+  const foundBooksListFull = targetBooksFull.filter(b => foundBookIds.has(b.id));
+
+  const paginate = <T,>(items: T[], page: number, pageSize: number) =>
+    items.slice((page - 1) * pageSize, page * pageSize);
+
+  const missingBooks = paginate(missingBooksFull, missingFoundPage, MISSING_FOUND_PAGE_SIZE);
+  const foundBooksList = paginate(foundBooksListFull, missingFoundPage, MISSING_FOUND_PAGE_SIZE);
+  const missingFoundTotalPages = Math.max(
+    1,
+    Math.ceil((filterMode === "found" ? foundBooksListFull.length : missingBooksFull.length) / MISSING_FOUND_PAGE_SIZE)
+  );
 
   const exportAuditToExcel = () => {
-    // 1. Preparar datos
-    const foundData = foundBooksList.map(b => ({
+    // El reporte de Excel también usa las listas completas (Full), no la
+    // página en memoria que se esté mostrando en pantalla.
+    const foundData = foundBooksListFull.map(b => ({
       ISBN: b.isbn, Título: b.title, Autor: b.author,
       "Estado Físico": b.statusPhysical, Observaciones: b.observation || "Ninguna", Validador: b.validator || "N/A"
     }));
 
-    const missingData = missingBooks.map(b => ({
+    const missingData = missingBooksFull.map(b => ({
       ISBN: b.isbn, Título: b.title, Autor: b.author,
       "Estado Físico": b.statusPhysical, "Última Observación": b.observation || "Ninguna"
     }));
@@ -320,7 +378,7 @@ export default function AnnualCheck() {
   if (filterMode === "loaned") displayBooks = loanedBooksList;
   if (filterMode === "dropped") displayBooks = droppedBooksList;
 
-  const auditableTotal = Math.max(0, counts.all - counts.borrowed - counts.dropped);
+  const auditableTotal = targetBooksFull.length;
   const progressPercentage = auditableTotal === 0 ? 0 : Math.round((foundBookIds.size / auditableTotal) * 100);
 
   return (
@@ -676,7 +734,13 @@ export default function AnnualCheck() {
         </table>
       </div>
 
-      {!loading && <Pagination page={page} totalPages={totalPages} onPageChange={setPage} isDark={isDark} />}
+      {filterMode === "missing" || filterMode === "found" ? (
+        !loadingTargets && (
+          <Pagination page={missingFoundPage} totalPages={missingFoundTotalPages} onPageChange={setMissingFoundPage} isDark={isDark} />
+        )
+      ) : (
+        !loading && <Pagination page={page} totalPages={totalPages} onPageChange={setPage} isDark={isDark} />
+      )}
 
       {showScanner && (
         <BarcodeScanner
