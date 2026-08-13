@@ -63,6 +63,10 @@ export default defineConfig({
       devOptions: {
         enabled: true,
       },
-    }),
+   }),
   ],
+  preview: {
+    host: true,
+    allowedHosts: ["bibliotecas-app-production-7dc0.up.railway.app"],
+  },
 });
